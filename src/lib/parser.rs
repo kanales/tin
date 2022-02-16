@@ -1,4 +1,4 @@
-use crate::lib::types::{Atom, Exp, Number, SchemeError, SchemeResult};
+use crate::lib::types::{Atom, Exp, Number, TinError, TinResult};
 
 fn tokenize<'a>(input: &'a str) -> impl Iterator<Item = String> + 'a {
     input
@@ -23,12 +23,12 @@ fn tokenize_test() {
     assert_eq!(res, expect);
 }
 
-fn from_tokens<I>(tokens: &mut std::iter::Peekable<I>) -> SchemeResult<Exp>
+fn from_tokens<I>(tokens: &mut std::iter::Peekable<I>) -> TinResult<Exp>
 where
     I: Iterator<Item = String>,
 {
     if let None = tokens.peek() {
-        return Err(SchemeError::SyntaxError("Unexpected EOF".to_string()));
+        return Err(TinError::SyntaxError("Unexpected EOF".to_string()));
     }
     let token = tokens.next().unwrap();
     if token == "(" {
@@ -45,7 +45,7 @@ where
         return Ok(Exp::List(v));
     }
     if token == ")" {
-        return Err(SchemeError::SyntaxError("Unexpected ')'".to_string()));
+        return Err(TinError::SyntaxError("Unexpected ')'".to_string()));
     }
 
     Ok(Exp::Atom(atom(&token)))
@@ -66,7 +66,7 @@ fn atom(token: &str) -> Atom {
     }
 }
 
-pub fn parse(program: &str) -> SchemeResult<Exp> {
+pub fn parse(program: &str) -> TinResult<Exp> {
     from_tokens(&mut tokenize(program).peekable())
 }
 

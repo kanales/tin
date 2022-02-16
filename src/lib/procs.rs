@@ -1,28 +1,13 @@
-use crate::lib::types::{Atom, Exp, Number, SchemeError, SchemeResult};
+use crate::lib::types::{Atom, Exp, Number, TinError, TinResult};
 
-fn ensure_arity<T>(want: usize, args: &[T]) -> SchemeResult<()> {
+fn ensure_arity<T>(want: usize, args: &[T]) -> TinResult<()> {
     if args.len() != want {
-        Err(SchemeError::ArityMismatch(want, args.len()))
+        Err(TinError::ArityMismatch(want, args.len()))
     } else {
         Ok(())
     }
 }
-
-macro_rules! to_number {
-    ($e:expr) => {
-        match $e {
-            Exp::Atom(Atom::Number(n)) => n,
-            _ => {
-                return Err(SchemeError::TypeMismatch(
-                    "Number".to_string(),
-                    format!("{:?}", $e),
-                ))
-            }
-        }
-    };
-}
-
-pub fn add(args: &[Exp]) -> SchemeResult<Exp> {
+pub fn add(args: &[Exp]) -> TinResult<Exp> {
     let mut acc = Number::Int(0);
     for el in args {
         acc = acc + to_number!(*el);
@@ -30,9 +15,9 @@ pub fn add(args: &[Exp]) -> SchemeResult<Exp> {
     Ok(Exp::Atom(Atom::Number(acc)))
 }
 
-pub fn sub(args: &[Exp]) -> SchemeResult<Exp> {
+pub fn sub(args: &[Exp]) -> TinResult<Exp> {
     let mut acc = if args.len() < 1 {
-        return Err(SchemeError::ArityMismatch(1, 0));
+        return Err(TinError::ArityMismatch(1, 0));
     } else {
         to_number!(args[0])
     };
@@ -41,7 +26,7 @@ pub fn sub(args: &[Exp]) -> SchemeResult<Exp> {
     }
     Ok(Exp::Atom(Atom::Number(acc)))
 }
-pub fn mul(args: &[Exp]) -> SchemeResult<Exp> {
+pub fn mul(args: &[Exp]) -> TinResult<Exp> {
     let mut acc = Number::Int(1);
     for el in args {
         acc = acc * to_number!(*el);
@@ -49,9 +34,9 @@ pub fn mul(args: &[Exp]) -> SchemeResult<Exp> {
     Ok(Exp::Atom(Atom::Number(acc)))
 }
 
-pub fn div(args: &[Exp]) -> SchemeResult<Exp> {
+pub fn div(args: &[Exp]) -> TinResult<Exp> {
     let mut acc = if args.len() < 1 {
-        return Err(SchemeError::ArityMismatch(1, 0));
+        return Err(TinError::ArityMismatch(1, 0));
     } else {
         to_number!(args[0])
     };
@@ -61,13 +46,13 @@ pub fn div(args: &[Exp]) -> SchemeResult<Exp> {
     Ok(Exp::Atom(Atom::Number(acc)))
 }
 
-pub fn abs(args: &[Exp]) -> SchemeResult<Exp> {
+pub fn abs(args: &[Exp]) -> TinResult<Exp> {
     ensure_arity(1, args)?;
     let n = to_number!(args[0]);
     Ok(Exp::Atom(Atom::Number(n.abs())))
 }
 
-pub fn eq(args: &[Exp]) -> SchemeResult<Exp> {
+pub fn eq(args: &[Exp]) -> TinResult<Exp> {
     ensure_arity(2, args)?;
     let a = to_number!(args[0]);
     let b = to_number!(args[1]);
@@ -93,7 +78,7 @@ pub fn eq(args: &[Exp]) -> SchemeResult<Exp> {
 
 macro_rules! ord_op {
     ($id:ident) => {
-        pub fn $id(args: &[Exp]) -> SchemeResult<Exp> {
+        pub fn $id(args: &[Exp]) -> TinResult<Exp> {
             ensure_arity(2, args)?;
             let a = to_number!(args[0]);
             let b = to_number!(args[1]);

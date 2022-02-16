@@ -1,10 +1,23 @@
 use crate::lib::eval::eval;
+use std::convert::From;
 
 pub type Symbol = String;
 #[derive(Debug, PartialEq, Clone, Copy, PartialOrd)]
 pub enum Number {
     Int(i64),
     Float(f64),
+}
+
+impl From<i64> for Number {
+    fn from(x: i64) -> Self {
+        Number::Int(x)
+    }
+}
+
+impl From<f64> for Number {
+    fn from(x: f64) -> Self {
+        Number::Float(x)
+    }
 }
 
 use std::ops::{Add, Div, Mul, Sub};
@@ -77,16 +90,59 @@ pub enum Atom {
     Bool(bool),
 }
 
+impl From<String> for Atom {
+    fn from(x: String) -> Self {
+        Atom::Symbol(x)
+    }
+}
+
+impl<T: Into<Number>> From<T> for Atom {
+    fn from(x: T) -> Self {
+        Atom::Number(x.into())
+    }
+}
+
+impl From<bool> for Atom {
+    fn from(x: bool) -> Self {
+        Atom::Bool(x)
+    }
+}
+
 pub type List = Vec<Exp>;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Exp {
     Atom(Atom),
     List(List),
     Proc(Proc),
+    Closure(Closure),
+}
+
+impl From<List> for Exp {
+    fn from(x: List) -> Self {
+        Exp::List(x)
+    }
+}
+
+impl<T: Into<Atom>> From<T> for Exp {
+    fn from(x: T) -> Self {
+        Exp::Atom(x.into())
+    }
+}
+
+impl From<Proc> for Exp {
+    fn from(x: Proc) -> Self {
+        Exp::Proc(x)
+    }
+}
+
+impl From<Closure> for Exp {
+    fn from(x: Closure) -> Self {
+        Exp::Closure(x)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum SchemeError {
+pub enum TinError {
     SyntaxError(String),
     TypeMismatch(String, String),
     NotAProcedure(Exp),
@@ -95,7 +151,7 @@ pub enum SchemeError {
     Undefined(Symbol),
 }
 
-pub type SchemeResult<R> = Result<R, SchemeError>;
+pub type TinResult<R> = Result<R, TinError>;
 
 impl Exp {
     pub fn truthy(&self) -> bool {
@@ -107,7 +163,7 @@ impl Exp {
     }
 }
 
-use std::fmt;
+use std::fmt::{self, Debug};
 impl fmt::Display for Exp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -116,6 +172,7 @@ impl fmt::Display for Exp {
             Exp::Atom(Atom::Number(Number::Float(n))) => write!(f, "{}", n),
             Exp::Atom(Atom::Bool(b)) => write!(f, "{}", b),
             Exp::Proc(_) => write!(f, "#proc"),
+            Exp::Closure(_) => write!(f, "#proc"),
             Exp::List(l) => {
                 write!(f, "( ")?;
                 for exp in l {
@@ -215,6 +272,10 @@ fn env_test() {
     assert_eq!(res, Exp::Atom(Atom::Symbol("y".to_string())))
 }
 
+pub trait Evaluable {
+    fn eval(&self, args: &[Exp]) -> TinResult<Exp>;
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Proc {
     params: Vec<Symbol>,
@@ -230,9 +291,46 @@ impl Proc {
             env,
         }
     }
+}
 
-    pub fn eval(&self, args: &[Exp]) -> SchemeResult<Exp> {
+impl Evaluable for Proc {
+    fn eval(&self, args: &[Exp]) -> TinResult<Exp> {
         let env = EnvironmentRef::from(&self.params, args, self.env.clone());
         eval(env, &self.body)
+    }
+}
+
+#[derive(Clone)]
+pub struct Closure {
+    closure: Box<fn(&[Exp]) -> TinResult<Exp>>,
+}
+
+impl Closure {
+    pub fn new(f: fn(&[Exp]) -> TinResult<Exp>) -> Exp {
+        Exp::Closure(Closure {
+            closure: Box::new(f),
+        })
+    }
+
+    pub fn eval(&self, args: &[Exp]) -> TinResult<Exp> {
+        (self.closure)(args)
+    }
+}
+
+impl Debug for Closure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "RustProc {{ closure: # }}")
+    }
+}
+
+impl Evaluable for Closure {
+    fn eval(&self, args: &[Exp]) -> TinResult<Exp> {
+        (self.closure)(args)
+    }
+}
+
+impl PartialEq for Closure {
+    fn eq(&self, other: &Self) -> bool {
+        *self.closure as usize == *other.closure as usize
     }
 }

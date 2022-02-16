@@ -1,15 +1,16 @@
 use crate::lib::procs;
 use crate::lib::types::*;
-use SchemeError::{ArityMismatch, NotAProcedure};
+use TinError::{ArityMismatch, NotAProcedure};
 
-pub fn eval(env: EnvironmentRef, x: &Exp) -> SchemeResult<Exp> {
+pub fn eval(env: EnvironmentRef, x: &Exp) -> TinResult<Exp> {
     match x {
         Exp::Atom(Atom::Symbol(s)) => env
             .borrow()
             .get(&*s)
-            .ok_or(SchemeError::Undefined(s.to_string())),
+            .ok_or(TinError::Undefined(s.to_string())),
         Exp::Atom(_) => Ok(x.clone()),
-        Exp::Proc(p) => Ok(Exp::Proc(p.clone())),
+        Exp::Closure(_) => Ok(x.clone()),
+        Exp::Proc(_) => Ok(x.clone()),
         Exp::List(lst) => {
             if lst.is_empty() {
                 return Err(NotAProcedure(x.clone()));
@@ -60,19 +61,35 @@ fn eval_rec_test() {
         eval(env, &input)
     );
 }
-fn eval_list(env: EnvironmentRef, op: &Exp, args: &[Exp]) -> SchemeResult<Exp> {
+fn eval_list(env: EnvironmentRef, op: &Exp, args: &[Exp]) -> TinResult<Exp> {
     match op {
         Exp::Atom(Atom::Symbol(s)) => eval_symbol(env, s, args),
         Exp::Proc(p) => p.eval(args),
+        Exp::Closure(p) => p.eval(args),
         x => match eval(env.clone(), &x)? {
             Exp::Atom(Atom::Symbol(s)) => eval_symbol(env, &s.to_string(), args),
-            Exp::Atom(x) => Err(SchemeError::NotAProcedure(Exp::Atom(x))),
+            Exp::Atom(x) => Err(TinError::NotAProcedure(Exp::Atom(x))),
             x => eval_list(env, &x, args),
         },
     }
 }
 
-fn eval_symbol(env: EnvironmentRef, op: &Symbol, args: &[Exp]) -> SchemeResult<Exp> {
+#[test]
+fn eval_rustproc() {
+    use crate::lib::parser::parse;
+    let env = EnvironmentRef::new();
+    env.borrow_mut().insert(
+        "foo".to_string(),
+        Closure::new(|args| match (args[0].clone(), args[1].clone()) {
+            (Exp::Atom(Atom::Number(x)), Exp::Atom(Atom::Number(y))) => Ok((x + y).into()),
+            _ => unreachable!(),
+        }),
+    );
+    let res = eval(env.clone(), &parse("(foo 1 2)").unwrap());
+    assert_eq!(Ok(3.into()), res);
+}
+
+fn eval_symbol(env: EnvironmentRef, op: &Symbol, args: &[Exp]) -> TinResult<Exp> {
     match op.as_ref() {
         "quote" => {
             if args.len() > 1 {
@@ -106,10 +123,10 @@ fn eval_symbol(env: EnvironmentRef, op: &Symbol, args: &[Exp]) -> SchemeResult<E
                     }
                     Ok(Exp::List(Vec::new()))
                 }
-                x => Err(SchemeError::NotASymbol(x.clone())),
+                x => Err(TinError::NotASymbol(x.clone())),
             }
         }
-        "do" => {
+        "begin" => {
             let mut last = Exp::List(Vec::new());
             for arg in args {
                 last = eval(env.clone(), &arg)?;
@@ -125,7 +142,7 @@ fn eval_symbol(env: EnvironmentRef, op: &Symbol, args: &[Exp]) -> SchemeResult<E
                 env.borrow_mut().update(sym.to_string(), exp.clone());
                 Ok(exp)
             } else {
-                Err(SchemeError::TypeMismatch(
+                Err(TinError::TypeMismatch(
                     "Symbol".to_string(),
                     format!("{}", args[1]),
                 ))
@@ -148,7 +165,7 @@ fn eval_symbol(env: EnvironmentRef, op: &Symbol, args: &[Exp]) -> SchemeResult<E
                     if let Exp::Atom(Atom::Symbol(s)) = p {
                         params.push(s.to_string())
                     } else {
-                        return Err(SchemeError::TypeMismatch(
+                        return Err(TinError::TypeMismatch(
                             "Symbol".to_string(),
                             format!("{}", p),
                         ));
@@ -160,7 +177,7 @@ fn eval_symbol(env: EnvironmentRef, op: &Symbol, args: &[Exp]) -> SchemeResult<E
                     env.clone(), // TODO check
                 )))
             } else {
-                Err(SchemeError::TypeMismatch(
+                Err(TinError::TypeMismatch(
                     "List".to_string(),
                     format!("{}", args[0]),
                 ))
@@ -186,9 +203,6 @@ fn eval_symbol(env: EnvironmentRef, op: &Symbol, args: &[Exp]) -> SchemeResult<E
                 "<=" => procs::le(&args),
                 "=" => procs::eq(&args),
                 "append" => {
-                    unimplemented!()
-                }
-                "begin" => {
                     unimplemented!()
                 }
                 "car" => {
@@ -242,16 +256,24 @@ fn eval_symbol(env: EnvironmentRef, op: &Symbol, args: &[Exp]) -> SchemeResult<E
                         env.clone(),
                         &env.borrow()
                             .get(&sym.to_string())
-                            .ok_or(SchemeError::Undefined(sym.to_string()))?,
+                            .ok_or(TinError::Undefined(sym.to_string()))?,
                     )?;
-                    if let Exp::Proc(proc) = head {
-                        let mut vals: Vec<Exp> = Vec::new();
-                        for arg in args {
-                            vals.push(eval(env.clone(), &arg)?);
+                    match head {
+                        Exp::Proc(proc) => {
+                            let mut vals: Vec<Exp> = Vec::new();
+                            for arg in args {
+                                vals.push(eval(env.clone(), &arg)?);
+                            }
+                            proc.eval(&vals)
                         }
-                        proc.eval(&vals)
-                    } else {
-                        Err(SchemeError::NotAProcedure(head))
+                        Exp::Closure(proc) => {
+                            let mut vals: Vec<Exp> = Vec::new();
+                            for arg in args {
+                                vals.push(eval(env.clone(), &arg)?);
+                            }
+                            proc.eval(&vals)
+                        }
+                        _ => Err(TinError::NotAProcedure(head)),
                     }
                 }
             }
