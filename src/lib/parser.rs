@@ -31,6 +31,9 @@ where
         return Err(TinError::SyntaxError("Unexpected EOF".to_string()));
     }
     let token = tokens.next().unwrap();
+    if token == "'" {
+        return Ok(vec!["quote".to_string().into(), from_tokens(tokens)?].into());
+    }
     if token == "(" {
         let mut v = Vec::new();
         loop {

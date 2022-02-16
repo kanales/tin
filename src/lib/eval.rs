@@ -148,7 +148,7 @@ fn eval_symbol(env: EnvironmentRef, op: &Symbol, args: &[Exp]) -> TinResult<Exp>
                 ))
             }
         }
-        "display" => {
+        "print" => {
             if args.len() != 1 {
                 return Err(ArityMismatch(1, args.len()));
             }
@@ -221,11 +221,19 @@ fn eval_symbol(env: EnvironmentRef, op: &Symbol, args: &[Exp]) -> TinResult<Exp>
                     unimplemented!()
                 }
                 "length" => {
-                    unimplemented!()
+                    if args.len() != 1 {
+                        return Err(TinError::ArityMismatch(1, args.len()));
+                    }
+                    if let Exp::List(lst) = &args[0] {
+                        Ok((lst.len() as i64).into())
+                    } else {
+                        Err(TinError::TypeMismatch(
+                            "List".to_string(),
+                            args[0].to_string(),
+                        ))
+                    }
                 }
-                "list" => {
-                    unimplemented!()
-                }
+                "list" => Ok(Exp::List(args.clone())),
                 "map" => {
                     unimplemented!()
                 }
@@ -238,19 +246,30 @@ fn eval_symbol(env: EnvironmentRef, op: &Symbol, args: &[Exp]) -> TinResult<Exp>
                 "not" => {
                     unimplemented!()
                 }
-                "null?" => {
-                    unimplemented!()
-                }
-                "number?" => {
-                    unimplemented!()
-                }
-                "print" => {
-                    unimplemented!()
-                }
+                "null?" => Ok((args.len() == 1
+                    && (if let Exp::List(x) = &args[0] {
+                        x.len() == 0
+                    } else {
+                        false
+                    }))
+                .into()),
+                "number?" => Ok((args.len() == 0
+                    && (if let Exp::Atom(Atom::Number(_)) = &args[0] {
+                        true
+                    } else {
+                        false
+                    }))
+                .into()),
                 "round" => {
                     unimplemented!()
                 }
-                "symbol?" => unimplemented!(),
+                "symbol?" => Ok((args.len() == 0
+                    && (if let Exp::Atom(Atom::Symbol(_)) = &args[0] {
+                        true
+                    } else {
+                        false
+                    }))
+                .into()),
                 sym => {
                     let head = eval(
                         env.clone(),

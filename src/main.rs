@@ -1,22 +1,17 @@
 mod lib;
 
-use crate::lib::types::EnvironmentRef;
+use crate::lib::Tin;
 
 fn main() {
-    let env = EnvironmentRef::new();
+    let mut tin = Tin::new();
     eprint!("> ");
     loop {
         let mut buffer = String::new();
         match std::io::stdin().read_line(&mut buffer) {
             Ok(_) => {
-                if let Ok(exp) = lib::parser::parse(&buffer) {
-                    let res = lib::eval::eval(env.clone(), &exp);
-                    match res {
-                        Ok(r) => eprintln!("{}", r),
-                        Err(e) => eprintln!("Error: {:?}", e),
-                    }
-                } else {
-                    eprintln!("SyntaxError");
+                match tin.eval_str(&buffer) {
+                    Ok(r) => eprintln!("{}", r),
+                    Err(e) => eprintln!("Error: {:?}", e),
                 }
                 eprint!("> ");
             }
