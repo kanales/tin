@@ -4,7 +4,7 @@ use SchemeError::{ArityMismatch, NotAProcedure};
 
 pub fn eval(env: &mut Environment, x: &Exp) -> SchemeResult<Exp> {
     match x {
-        Exp::Atom(Atom::Symbol(s)) => Ok(env.env[&*s].clone()),
+        Exp::Atom(Atom::Symbol(s)) => Ok(env.get(&*s).clone()),
         Exp::Atom(_) => Ok(x.clone()),
         Exp::Proc(p) => p.eval(&[]),
         Exp::List(lst) => {
@@ -95,7 +95,7 @@ fn eval_symbol(env: &mut Environment, op: &Symbol, args: &[Exp]) -> SchemeResult
                 Exp::Atom(Atom::Symbol(s)) => {
                     // TODO check the clone
                     let res = eval(env, &args[1])?;
-                    env.env.insert(s.to_string(), res.clone());
+                    env.insert(s.to_string(), res.clone());
                     Ok(res)
                 }
                 x => Err(SchemeError::NotASymbol(x.clone())),
@@ -107,7 +107,7 @@ fn eval_symbol(env: &mut Environment, op: &Symbol, args: &[Exp]) -> SchemeResult
             }
             if let Exp::Atom(Atom::Symbol(sym)) = &args[0] {
                 let exp = eval(env, &args[1])?;
-                env.find(&sym).env.insert(sym.to_string(), exp.clone());
+                env.find_mut(&sym).insert(sym.to_string(), exp.clone());
                 Ok(exp)
             } else {
                 Err(SchemeError::TypeMismatch(
@@ -215,7 +215,7 @@ fn eval_symbol(env: &mut Environment, op: &Symbol, args: &[Exp]) -> SchemeResult
                 }
                 "symbol?" => unimplemented!(),
                 sym => {
-                    let head = &env.env[sym];
+                    let head = &env.get(&sym.to_string()).clone();
                     if let Exp::Proc(proc) = head.clone() {
                         let vals: Vec<_> = args
                             .iter()

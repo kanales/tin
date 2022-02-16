@@ -1,4 +1,5 @@
 use crate::lib::eval::eval;
+use std::rc::Rc;
 
 pub type Symbol = String;
 #[derive(Debug, PartialEq, Clone, Copy, PartialOrd)]
@@ -151,7 +152,7 @@ impl Proc {
 use std::collections::hash_map::HashMap;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Environment {
-    pub env: HashMap<Symbol, Exp>,
+    env: HashMap<Symbol, Exp>,
     outer: Option<Box<Environment>>,
 }
 
@@ -163,7 +164,7 @@ impl Environment {
         }
     }
 
-    fn from(params: &[Symbol], args: &[Exp], outer: Environment) -> Self {
+    pub fn from(params: &[Symbol], args: &[Exp], outer: Environment) -> Self {
         if params.len() != args.len() {
             panic!("Mismatched length creating Environment");
         }
@@ -177,11 +178,32 @@ impl Environment {
         this
     }
 
-    pub fn find(&mut self, var: &Symbol) -> &mut Environment {
+    pub fn get(&self, var: &Symbol) -> &Exp {
+        let env = if self.env.contains_key(var) {
+            self
+        } else {
+            self.outer.as_ref().unwrap().find(var)
+        };
+        &env.env[var]
+    }
+
+    pub fn insert(&mut self, var: Symbol, val: Exp) {
+        self.env.insert(var, val);
+    }
+
+    pub fn find(&self, var: &Symbol) -> &Environment {
         return if self.env.contains_key(var) {
             self
         } else {
-            self.outer.as_mut().unwrap().find(var)
+            self.outer.as_ref().unwrap().find(var)
+        };
+    }
+
+    pub fn find_mut(&mut self, var: &Symbol) -> &mut Environment {
+        return if self.env.contains_key(var) {
+            self
+        } else {
+            self.outer.as_mut().unwrap().find_mut(var)
         };
     }
 }
