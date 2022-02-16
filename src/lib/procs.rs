@@ -1,6 +1,6 @@
 use crate::lib::types::{Atom, Exp, Number, SchemeError, SchemeResult};
 
-fn ensure_arity(want: usize, args: &[Exp]) -> SchemeResult<()> {
+fn ensure_arity<T>(want: usize, args: &[T]) -> SchemeResult<()> {
     if args.len() != want {
         Err(SchemeError::ArityMismatch(want, args.len()))
     } else {
@@ -66,6 +66,45 @@ pub fn abs(args: &[Exp]) -> SchemeResult<Exp> {
     let n = to_number!(args[0]);
     Ok(Exp::Atom(Atom::Number(n.abs())))
 }
-//                 "abs" => {
-//                     unimplemented!()
-//                 }
+
+pub fn eq(args: &[Exp]) -> SchemeResult<Exp> {
+    ensure_arity(2, args)?;
+    let a = to_number!(args[0]);
+    let b = to_number!(args[1]);
+    Ok(Exp::Atom(Atom::Bool(match (a, b) {
+        (Number::Int(a), Number::Int(b)) => a == b,
+        (Number::Float(a), Number::Int(b)) => {
+            if a.is_finite() {
+                a as i64 == b
+            } else {
+                false
+            }
+        }
+        (Number::Int(b), Number::Float(a)) => {
+            if a.is_finite() {
+                a as i64 == b
+            } else {
+                false
+            }
+        }
+        (Number::Float(a), Number::Float(b)) => a == b,
+    })))
+}
+
+macro_rules! ord_op {
+    ($id:ident) => {
+        pub fn $id(args: &[Exp]) -> SchemeResult<Exp> {
+            ensure_arity(2, args)?;
+            let a = to_number!(args[0]);
+            let b = to_number!(args[1]);
+            let res = a.$id(&b);
+
+            Ok(Exp::Atom(Atom::Bool(res)))
+        }
+    };
+}
+
+ord_op!(le);
+ord_op!(ge);
+ord_op!(lt);
+ord_op!(gt);
