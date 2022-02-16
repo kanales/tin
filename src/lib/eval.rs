@@ -2,73 +2,77 @@ use crate::lib::procs;
 use crate::lib::types::*;
 use SchemeError::{ArityMismatch, NotAProcedure};
 
-pub fn eval(env: &mut Environment, x: &Exp) -> SchemeResult<Exp> {
+pub fn eval(env: EnvironmentRef, x: &Exp) -> SchemeResult<Exp> {
     match x {
-        Exp::Atom(Atom::Symbol(s)) => Ok(env.get(&*s).clone()),
+        Exp::Atom(Atom::Symbol(s)) => env
+            .borrow()
+            .get(&*s)
+            .ok_or(SchemeError::Undefined(s.to_string())),
         Exp::Atom(_) => Ok(x.clone()),
-        Exp::Proc(p) => p.eval(&[]),
+        Exp::Proc(p) => Ok(Exp::Proc(p.clone())),
         Exp::List(lst) => {
             if lst.is_empty() {
                 return Err(NotAProcedure(x.clone()));
             }
 
-            // let op = self.eval(lst[0]))?;
             eval_list(env, &lst[0], &lst[1..])
         }
     }
 }
+
 #[test]
-fn eval_test() {
+fn eval_simple_test() {
     use crate::lib::parser::parse;
-    let mut env = Environment::new();
+    let env = EnvironmentRef::new();
     let input = parse("( + 1 2 3 )").unwrap();
     assert_eq!(
         Ok(Exp::Atom(Atom::Number(Number::Int(6)))),
-        eval(&mut env, &input)
-    );
+        eval(env.clone(), &input)
+    )
+}
 
-    eval(&mut env, &parse("( define x 3 )").unwrap()).unwrap();
+#[test]
+fn eval_define_test() {
+    use crate::lib::parser::parse;
+    let env = EnvironmentRef::new();
+    eval(env.clone(), &parse("( define x 3 )").unwrap()).unwrap();
     let input = parse("( + x 4 )").unwrap();
 
     assert_eq!(
         Ok(Exp::Atom(Atom::Number(Number::Int(7)))),
-        eval(&mut env, &input)
+        eval(env, &input)
     );
 }
+
 #[test]
 fn eval_rec_test() {
     use crate::lib::parser::parse;
-    let mut env = Environment::new();
+    let env = EnvironmentRef::new();
+
     eval(
-        &mut env,
-        &parse("( define fact (lambda (x) (if (< x 2) 1 ( * x ( fact ( - 1 x) ) ) ) )").unwrap(),
+        env.clone(),
+        &parse("( define fact (lambda (x) (if (< x 2) 1 ( * x ( fact ( - x 1 ) ) ) ) ))").unwrap(),
     )
     .unwrap();
     let input = parse("( fact 5 )").unwrap();
     assert_eq!(
         Ok(Exp::Atom(Atom::Number(Number::Int(120)))),
-        eval(&mut env, &input)
+        eval(env, &input)
     );
 }
-fn eval_list(env: &mut Environment, op: &Exp, args: &[Exp]) -> SchemeResult<Exp> {
+fn eval_list(env: EnvironmentRef, op: &Exp, args: &[Exp]) -> SchemeResult<Exp> {
     match op {
         Exp::Atom(Atom::Symbol(s)) => eval_symbol(env, s, args),
         Exp::Proc(p) => p.eval(args),
-        x => {
-            match eval(env, &x)? {
-                Exp::Atom(Atom::Symbol(s)) => eval_symbol(env, &s.to_string(), args),
-                Exp::Atom(x) => Err(SchemeError::NotAProcedure(Exp::Atom(x))),
-                x => eval_list(env, &x, args),
-            }
-            // let vals: Vec<_> = args
-            //     .iter()
-            //     .map(|arg| self.eval(arg))
-            //     .collect::<SchemeResult<_>>()?;
-        }
+        x => match eval(env.clone(), &x)? {
+            Exp::Atom(Atom::Symbol(s)) => eval_symbol(env, &s.to_string(), args),
+            Exp::Atom(x) => Err(SchemeError::NotAProcedure(Exp::Atom(x))),
+            x => eval_list(env, &x, args),
+        },
     }
 }
 
-fn eval_symbol(env: &mut Environment, op: &Symbol, args: &[Exp]) -> SchemeResult<Exp> {
+fn eval_symbol(env: EnvironmentRef, op: &Symbol, args: &[Exp]) -> SchemeResult<Exp> {
     match op.as_ref() {
         "quote" => {
             if args.len() > 1 {
@@ -81,7 +85,7 @@ fn eval_symbol(env: &mut Environment, op: &Symbol, args: &[Exp]) -> SchemeResult
             if args.len() != 3 {
                 return Err(ArityMismatch(3, args.len()));
             }
-            if eval(env, &args[0])?.truthy() {
+            if eval(env.clone(), &args[0])?.truthy() {
                 eval(env, &args[1])
             } else {
                 eval(env, &args[2])
@@ -93,21 +97,32 @@ fn eval_symbol(env: &mut Environment, op: &Symbol, args: &[Exp]) -> SchemeResult
             }
             match &args[0] {
                 Exp::Atom(Atom::Symbol(s)) => {
-                    // TODO check the clone
-                    let res = eval(env, &args[1])?;
-                    env.insert(s.to_string(), res.clone());
-                    Ok(res)
+                    let arg = args[1].clone();
+                    if let Exp::Proc(p) = arg {
+                        env.borrow_mut().insert(s.to_string(), Exp::Proc(p));
+                    } else {
+                        env.borrow_mut()
+                            .insert(s.to_string(), eval(env.clone(), &arg)?);
+                    }
+                    Ok(Exp::List(Vec::new()))
                 }
                 x => Err(SchemeError::NotASymbol(x.clone())),
             }
+        }
+        "do" => {
+            let mut last = Exp::List(Vec::new());
+            for arg in args {
+                last = eval(env.clone(), &arg)?;
+            }
+            Ok(last)
         }
         "set!" => {
             if args.len() != 2 {
                 return Err(ArityMismatch(2, args.len()));
             }
             if let Exp::Atom(Atom::Symbol(sym)) = &args[0] {
-                let exp = eval(env, &args[1])?;
-                env.find_mut(&sym).insert(sym.to_string(), exp.clone());
+                let exp = eval(env.clone(), &args[1])?;
+                env.borrow_mut().update(sym.to_string(), exp.clone());
                 Ok(exp)
             } else {
                 Err(SchemeError::TypeMismatch(
@@ -115,6 +130,13 @@ fn eval_symbol(env: &mut Environment, op: &Symbol, args: &[Exp]) -> SchemeResult
                     format!("{}", args[1]),
                 ))
             }
+        }
+        "display" => {
+            if args.len() != 1 {
+                return Err(ArityMismatch(1, args.len()));
+            }
+            println!("{}", eval(env, &args[0])?);
+            Ok(Exp::List(Vec::new()))
         }
         "lambda" => {
             if args.len() != 2 {
@@ -132,7 +154,6 @@ fn eval_symbol(env: &mut Environment, op: &Symbol, args: &[Exp]) -> SchemeResult
                         ));
                     }
                 }
-
                 Ok(Exp::Proc(Proc::new(
                     params,
                     args[1].clone(),
@@ -146,10 +167,12 @@ fn eval_symbol(env: &mut Environment, op: &Symbol, args: &[Exp]) -> SchemeResult
             }
         }
         x => {
-            let args: Vec<_> = args
-                .iter()
-                .map(|arg| eval(env, arg))
-                .collect::<SchemeResult<_>>()?;
+            let pars = args;
+            let mut args: Vec<Exp> = Vec::new();
+
+            for arg in pars {
+                args.push(eval(env.clone(), &arg)?);
+            }
 
             match x {
                 "+" => procs::add(&args),
@@ -215,18 +238,20 @@ fn eval_symbol(env: &mut Environment, op: &Symbol, args: &[Exp]) -> SchemeResult
                 }
                 "symbol?" => unimplemented!(),
                 sym => {
-                    let head = &env.get(&sym.to_string()).clone();
-                    if let Exp::Proc(proc) = head.clone() {
-                        let vals: Vec<_> = args
-                            .iter()
-                            .map(|arg| eval(env, arg))
-                            .collect::<SchemeResult<_>>()?;
+                    let head = eval(
+                        env.clone(),
+                        &env.borrow()
+                            .get(&sym.to_string())
+                            .ok_or(SchemeError::Undefined(sym.to_string()))?,
+                    )?;
+                    if let Exp::Proc(proc) = head {
+                        let mut vals: Vec<Exp> = Vec::new();
+                        for arg in args {
+                            vals.push(eval(env.clone(), &arg)?);
+                        }
                         proc.eval(&vals)
                     } else {
-                        Err(SchemeError::TypeMismatch(
-                            "Proc".to_string(),
-                            format!("{:?}", head),
-                        ))
+                        Err(SchemeError::NotAProcedure(head))
                     }
                 }
             }

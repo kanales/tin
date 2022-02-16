@@ -1,5 +1,4 @@
 use crate::lib::eval::eval;
-use std::rc::Rc;
 
 pub type Symbol = String;
 #[derive(Debug, PartialEq, Clone, Copy, PartialOrd)]
@@ -93,6 +92,7 @@ pub enum SchemeError {
     NotAProcedure(Exp),
     NotASymbol(Exp),
     ArityMismatch(usize, usize),
+    Undefined(Symbol),
 }
 
 pub type SchemeResult<R> = Result<R, SchemeError>;
@@ -127,33 +127,35 @@ impl fmt::Display for Exp {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Proc {
-    params: Vec<Symbol>,
-    body: Box<Exp>,
-    env: Environment,
-}
-
-impl Proc {
-    pub fn new(params: Vec<Symbol>, body: Exp, env: Environment) -> Self {
-        Proc {
-            params,
-            body: Box::new(body),
-            env,
-        }
-    }
-
-    pub fn eval(&self, args: &[Exp]) -> SchemeResult<Exp> {
-        let mut env = Environment::from(&self.params, args, self.env.clone());
-        eval(&mut env, &self.body)
-    }
-}
-
+use std::cell::{Ref, RefCell, RefMut};
 use std::collections::hash_map::HashMap;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Environment {
     env: HashMap<Symbol, Exp>,
-    outer: Option<Box<Environment>>,
+    outer: Option<Box<EnvironmentRef>>,
+}
+
+use std::rc::Rc;
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnvironmentRef(Rc<RefCell<Environment>>);
+
+impl EnvironmentRef {
+    pub fn new() -> Self {
+        EnvironmentRef(Rc::new(RefCell::new(Environment::new())))
+    }
+
+    pub fn from(params: &[Symbol], args: &[Exp], outer: EnvironmentRef) -> Self {
+        EnvironmentRef(Rc::new(RefCell::new(Environment::from(
+            params, args, outer,
+        ))))
+    }
+    pub fn borrow_mut(&self) -> RefMut<Environment> {
+        self.0.borrow_mut()
+    }
+    pub fn borrow(&self) -> Ref<Environment> {
+        self.0.borrow()
+    }
 }
 
 impl Environment {
@@ -164,7 +166,7 @@ impl Environment {
         }
     }
 
-    pub fn from(params: &[Symbol], args: &[Exp], outer: Environment) -> Self {
+    pub fn from(params: &[Symbol], args: &[Exp], outer: EnvironmentRef) -> Self {
         if params.len() != args.len() {
             panic!("Mismatched length creating Environment");
         }
@@ -174,36 +176,63 @@ impl Environment {
             this.env.insert(p.to_string(), args[i].clone());
         }
 
-        this.outer = Some(Box::new(outer));
+        this.outer = Some(Box::new(outer.clone()));
         this
     }
 
-    pub fn get(&self, var: &Symbol) -> &Exp {
-        let env = if self.env.contains_key(var) {
-            self
+    pub fn get<'a>(&'a self, var: &'a Symbol) -> Option<Exp> {
+        if self.env.contains_key(var) {
+            Some(self.env[var].clone())
         } else {
-            self.outer.as_ref().unwrap().find(var)
-        };
-        &env.env[var]
+            self.outer.as_ref()?.borrow().get(var)
+        }
     }
 
     pub fn insert(&mut self, var: Symbol, val: Exp) {
         self.env.insert(var, val);
     }
 
-    pub fn find(&self, var: &Symbol) -> &Environment {
-        return if self.env.contains_key(var) {
-            self
+    pub fn update(&mut self, k: Symbol, v: Exp) {
+        if self.env.contains_key(&k) {
+            self.env.insert(k, v);
         } else {
-            self.outer.as_ref().unwrap().find(var)
-        };
+            self.outer.as_ref().unwrap().borrow_mut().update(k, v)
+        }
+    }
+}
+
+#[test]
+fn env_test() {
+    let env = EnvironmentRef::new();
+    let inner = EnvironmentRef::from(
+        &vec!["x".to_string()],
+        &vec![Exp::Atom(Atom::Symbol("x".to_string()))],
+        env.clone(),
+    );
+    env.borrow_mut()
+        .insert("y".to_string(), Exp::Atom(Atom::Symbol("y".to_string())));
+    let res = inner.borrow().get(&"y".to_string()).unwrap();
+    assert_eq!(res, Exp::Atom(Atom::Symbol("y".to_string())))
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Proc {
+    params: Vec<Symbol>,
+    body: Box<Exp>,
+    env: EnvironmentRef,
+}
+
+impl Proc {
+    pub fn new(params: Vec<Symbol>, body: Exp, env: EnvironmentRef) -> Self {
+        Proc {
+            params,
+            body: Box::new(body),
+            env,
+        }
     }
 
-    pub fn find_mut(&mut self, var: &Symbol) -> &mut Environment {
-        return if self.env.contains_key(var) {
-            self
-        } else {
-            self.outer.as_mut().unwrap().find_mut(var)
-        };
+    pub fn eval(&self, args: &[Exp]) -> SchemeResult<Exp> {
+        let env = EnvironmentRef::from(&self.params, args, self.env.clone());
+        eval(env, &self.body)
     }
 }
