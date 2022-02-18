@@ -22,10 +22,10 @@ impl Tin {
     }
     pub fn eval_str(&mut self, s: &str) -> TinResult<Exp> {
         let exp = parse(s)?;
-        eval(self.base.clone(), &exp)
+        eval(self.base.clone(), exp)
     }
 
-    pub fn eval(&mut self, e: &Exp) -> TinResult<Exp> {
-        eval(self.base.clone(), &e)
+    pub fn eval(&mut self, e: Exp) -> TinResult<Exp> {
+        eval(self.base.clone(), e)
     }
 }

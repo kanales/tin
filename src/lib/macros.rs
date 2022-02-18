@@ -14,3 +14,15 @@ macro_rules! to_number {
         }
     };
 }
+
+#[macro_export]
+macro_rules! list {
+    () => {
+        $crate::lib::types::List::new()
+    };
+
+    ($($x:expr),*) => {
+            List::from(vec![ $( $x, )* ])
+    };
+
+}
