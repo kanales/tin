@@ -1,6 +1,5 @@
-use crate::lib::procs;
 use crate::lib::types::*;
-use crate::list;
+use crate::{list, to_list, to_symbol};
 use TinError::{ArityMismatch, NotAProcedure};
 
 pub fn eval(env: EnvironmentRef, x: Exp) -> TinResult<Exp> {
@@ -9,14 +8,11 @@ pub fn eval(env: EnvironmentRef, x: Exp) -> TinResult<Exp> {
             .borrow()
             .get(&s)
             .ok_or(TinError::Undefined(s.to_string())),
-        Exp::String(_) => Ok(x.clone()),
-        Exp::Atom(_) => Ok(x.clone()),
-        Exp::Closure(_) => Ok(x.clone()),
-        Exp::Proc(_) => Ok(x.clone()),
         Exp::List(lst) => match lst.snoc() {
             Some((head, tail)) => eval_list(env, head, tail),
             _ => Err(NotAProcedure(Exp::List(List::new()))),
         },
+        _ => Ok(x),
     }
 }
 
@@ -65,6 +61,7 @@ fn eval_list(env: EnvironmentRef, op: Exp, args: List) -> TinResult<Exp> {
         Exp::Atom(Atom::Symbol(s)) => eval_symbol(env, s, args),
         Exp::Proc(p) => p.eval(&args.as_vec()),
         Exp::Closure(p) => p.eval(&args.as_vec()),
+        Exp::Macro(m) => m.expand(&args.as_vec()),
         x => match eval(env.clone(), x)? {
             Exp::Atom(Atom::Symbol(s)) => eval_symbol(env, s, args),
             Exp::Atom(x) => Err(TinError::NotAProcedure(Exp::Atom(x))),
@@ -86,6 +83,34 @@ fn eval_rustproc() {
     );
     let res = eval(env.clone(), parse("(foo 1 2)").unwrap());
     assert_eq!(Ok(3.into()), res);
+}
+
+fn define(env: EnvironmentRef, s: Symbol, body: Exp) -> TinResult<()> {
+    if let Exp::Proc(p) = body {
+        env.borrow_mut().insert(s, Exp::Proc(p));
+    } else {
+        env.borrow_mut().insert(s, eval(env.clone(), body)?);
+    }
+    Ok(())
+}
+
+fn lambda(env: EnvironmentRef, params: List, body: Exp) -> TinResult<Exp> {
+    let params = params
+        .map(|x| match x {
+            Exp::Atom(Atom::Symbol(x)) => Ok(x),
+            x => Err(TinError::NotASymbol(x)),
+        })
+        .collect::<TinResult<Vec<_>>>()?;
+    Ok(Exp::Proc(Proc::new(
+        params,
+        body,
+        env.clone(), // TODO check
+    )))
+}
+
+fn defmacro(env: EnvironmentRef, name: Symbol, params: List, rule: Exp) -> TinResult<()> {
+    let m = Macro::new(params, rule);
+    define(env, name, m.into())
 }
 
 fn eval_symbol(env: EnvironmentRef, op: Symbol, mut args: List) -> TinResult<Exp> {
@@ -118,18 +143,26 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, mut args: List) -> TinResult<Exp
             }
             let def = args.pop().unwrap();
             let body = args.pop().unwrap();
-            if let Exp::Atom(Atom::Symbol(s)) = def {
-                if let Exp::Proc(p) = body {
-                    env.borrow_mut().insert(s, Exp::Proc(p));
-                } else {
-                    env.borrow_mut().insert(s, eval(env.clone(), body)?);
+            match def {
+                Exp::Atom(Atom::Symbol(s)) => {
+                    define(env, s, body)?;
+
+                    Ok(Exp::List(List::new()))
                 }
-                Ok(Exp::List(List::new()))
-            } else {
-                Err(TinError::NotASymbol(def))
+                Exp::List(lst) => match lst.snoc() {
+                    None => Err(TinError::Null),
+                    Some((def, args)) => {
+                        let body = lambda(env.clone(), args, body)?;
+                        let def = to_symbol!(def);
+                        define(env, def, body)?;
+
+                        Ok(Exp::List(List::new()))
+                    }
+                },
+                _ => Err(TinError::NotASymbol(def)),
             }
         }
-        "begin" => {
+        "do" => {
             let mut last = Exp::List(list!());
             for arg in args {
                 last = eval(env.clone(), arg)?;
@@ -167,19 +200,8 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, mut args: List) -> TinResult<Exp
             }
             let params = args.pop().unwrap();
             let body = args.pop().unwrap();
-
             if let Exp::List(params) = params {
-                let params = params
-                    .map(|x| match x {
-                        Exp::Atom(Atom::Symbol(x)) => Ok(x),
-                        x => Err(TinError::NotASymbol(x)),
-                    })
-                    .collect::<TinResult<Vec<_>>>()?;
-                Ok(Exp::Proc(Proc::new(
-                    params,
-                    body,
-                    env.clone(), // TODO check
-                )))
+                lambda(env, params, body)
             } else {
                 Err(TinError::TypeMismatch(
                     "List".to_string(),
@@ -187,11 +209,22 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, mut args: List) -> TinResult<Exp
                 ))
             }
         }
-        x => {
-            let args: Vec<_> = args
-                .map(|a| eval(env.clone(), a))
-                .collect::<TinResult<_>>()?;
+        "defmacro" => {
+            if args.len() != 3 {
+                return Err(TinError::ArityMismatch(3, args.len()));
+            }
+            let name = to_symbol!(args.pop().unwrap());
+            let params = to_list!(args.pop().unwrap());
+            let rule = args.pop().unwrap();
 
+            defmacro(env, name, params, rule)?;
+
+            Ok(Exp::List(List::new()))
+        }
+        "macroexpand" => {
+            unimplemented!()
+        }
+        x => {
             let head = eval(
                 env.clone(),
                 env.borrow()
@@ -200,18 +233,21 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, mut args: List) -> TinResult<Exp
             )?;
             match head {
                 Exp::Proc(proc) => {
-                    let mut vals: Vec<Exp> = Vec::new();
-                    for arg in args {
-                        vals.push(eval(env.clone(), arg)?);
-                    }
-                    proc.eval(&vals)
+                    let args: Vec<_> = args
+                        .map(|a| eval(env.clone(), a))
+                        .collect::<TinResult<_>>()?;
+                    proc.eval(&args)
                 }
                 Exp::Closure(proc) => {
-                    let mut vals: Vec<Exp> = Vec::new();
-                    for arg in args {
-                        vals.push(eval(env.clone(), arg)?);
-                    }
-                    proc.eval(&vals)
+                    let args: Vec<_> = args
+                        .map(|a| eval(env.clone(), a))
+                        .collect::<TinResult<_>>()?;
+                    proc.eval(&args)
+                }
+                Exp::Macro(m) => {
+                    let vals: Vec<Exp> = args.collect();
+
+                    eval(env, m.expand(&vals)?)
                 }
                 _ => Err(TinError::NotAProcedure(head)),
             }

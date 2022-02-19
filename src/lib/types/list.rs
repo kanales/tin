@@ -61,6 +61,19 @@ impl List {
         self.head = node.next;
         Some(node.elem)
     }
+
+    pub fn replace(self, pat: &Exp, repl: Exp) -> Self {
+        let mut tmp = Vec::new();
+        for exp in self {
+            let exp = exp.clone();
+            if exp == *pat {
+                tmp.push(repl.clone());
+            } else {
+                tmp.push(exp.replace(pat, repl.clone()));
+            }
+        }
+        List::from(tmp)
+    }
 }
 
 #[test]

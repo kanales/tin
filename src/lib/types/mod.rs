@@ -117,6 +117,7 @@ pub enum Exp {
     Atom(Atom),
     List(List),
     String(String),
+    Macro(Macro),
     Proc(Proc),
     Closure(Closure),
 }
@@ -166,6 +167,20 @@ impl Exp {
             true
         }
     }
+
+    pub fn replace(self, pat: &Exp, repl: Exp) -> Exp {
+        match self {
+            Exp::Atom(_) => {
+                if self == *pat {
+                    repl
+                } else {
+                    self
+                }
+            }
+            Exp::List(lst) => Exp::List(lst.replace(pat, repl)),
+            _ => self,
+        }
+    }
 }
 
 use std::fmt::{self, Debug};
@@ -177,6 +192,7 @@ impl fmt::Display for Exp {
             Exp::Atom(Atom::Number(Number::Float(n))) => write!(f, "{}", n),
             Exp::Atom(Atom::Bool(b)) => write!(f, "{}", b),
             Exp::String(s) => write!(f, "\"{}\"", s),
+            Exp::Macro(_) => write!(f, "#macro"),
             Exp::Proc(_) => write!(f, "#proc"),
             Exp::Closure(_) => write!(f, "#proc"),
             Exp::List(l) => {
@@ -250,5 +266,41 @@ impl Debug for Closure {
 impl PartialEq for Closure {
     fn eq(&self, other: &Self) -> bool {
         *self.0 as usize == *other.0 as usize
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Macro {
+    params: List,
+    arity: usize,
+    rule: Box<Exp>,
+}
+
+impl Macro {
+    pub fn new(params: List, rule: Exp) -> Self {
+        let arity = params.len();
+        Macro {
+            params,
+            arity,
+            rule: Box::new(rule),
+        }
+    }
+    pub fn expand(&self, args: &[Exp]) -> TinResult<Exp> {
+        if args.len() != self.arity {
+            return Err(TinError::ArityMismatch(self.arity, args.len()));
+        }
+
+        let params = self.params.clone();
+        let mut res: Exp = *self.rule.clone();
+        for (i, param) in params.enumerate() {
+            res = res.replace(&param, args[i].clone());
+        }
+        Ok(res)
+    }
+}
+
+impl From<Macro> for Exp {
+    fn from(m: Macro) -> Self {
+        Exp::Macro(m)
     }
 }
