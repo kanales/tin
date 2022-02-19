@@ -22,6 +22,7 @@ struct TokenIter<'a> {
     input: Peekable<Chars<'a>>,
     state: State,
 }
+
 impl<'a> Iterator for TokenIter<'a> {
     type Item = Token;
 

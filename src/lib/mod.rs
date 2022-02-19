@@ -17,7 +17,7 @@ pub struct Tin {
 impl Tin {
     pub fn new() -> Self {
         Tin {
-            base: EnvironmentRef::new(),
+            base: EnvironmentRef::default(),
         }
     }
     pub fn eval_str(&mut self, s: &str) -> TinResult<Exp> {

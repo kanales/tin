@@ -221,20 +221,23 @@ impl Evaluable for Proc {
 }
 
 #[derive(Clone)]
-pub struct Closure {
-    closure: Box<fn(&[Exp]) -> TinResult<Exp>>,
-}
+pub struct Closure(Box<fn(&[Exp]) -> TinResult<Exp>>);
 
 impl Closure {
     pub fn new(f: fn(&[Exp]) -> TinResult<Exp>) -> Exp {
-        Exp::Closure(Closure {
-            closure: Box::new(f),
-        })
+        Exp::Closure(Closure(Box::new(f)))
     }
 }
+
+impl From<for<'a> fn(&'a [Exp]) -> TinResult<Exp>> for Closure {
+    fn from(f: fn(&[Exp]) -> TinResult<Exp>) -> Self {
+        Closure(Box::new(f))
+    }
+}
+
 impl Evaluable for Closure {
     fn eval(&self, args: &[Exp]) -> TinResult<Exp> {
-        (self.closure)(args)
+        (self.0)(args)
     }
 }
 
@@ -246,6 +249,6 @@ impl Debug for Closure {
 
 impl PartialEq for Closure {
     fn eq(&self, other: &Self) -> bool {
-        *self.closure as usize == *other.closure as usize
+        *self.0 as usize == *other.0 as usize
     }
 }

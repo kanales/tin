@@ -1,4 +1,5 @@
-use crate::lib::types::{Atom, Exp, List, Symbol};
+use crate::lib::procs;
+use crate::lib::types::{Atom, Closure, Exp, List, Number, Symbol, TinError};
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::hash_map::HashMap;
 
@@ -15,6 +16,9 @@ pub struct EnvironmentRef(Rc<RefCell<Environment>>);
 impl EnvironmentRef {
     pub fn new() -> Self {
         EnvironmentRef(Rc::new(RefCell::new(Environment::new())))
+    }
+    pub fn default() -> Self {
+        EnvironmentRef(Rc::new(RefCell::new(Environment::default())))
     }
 
     pub fn from(params: &[Symbol], args: &[Exp], outer: EnvironmentRef) -> Self {
@@ -36,6 +40,79 @@ impl Environment {
             env: HashMap::new(),
             outer: None,
         }
+    }
+    pub fn default() -> Self {
+        let env = make_hash! {
+            "+" => Closure::new(procs::add),
+            "-" => Closure::new(procs::sub),
+            "*" => Closure::new(procs::mul),
+            "/" => Closure::new(procs::div),
+            "abs" => Closure::new(procs::abs),
+            "exp" => Closure::new(|_| unimplemented!()),
+            ">" => Closure::new(procs::gt),
+            "<" => Closure::new(procs::lt),
+            ">=" => Closure::new(procs::ge),
+            "<=" => Closure::new(procs::le),
+            "=" => Closure::new(procs::eq),
+            "not" => Closure::new(|_| unimplemented!()),
+            "append" => Closure::new(|_| unimplemented!()),
+            "car" => Closure::new(|_| unimplemented!()),
+            "cdr" => Closure::new(|_| unimplemented!()),
+            "cons" => Closure::new(|_| unimplemented!()),
+            "eq?" => Closure::new(procs::eq ),
+            "len" => Closure::new(|args| {
+              if args.len() != 1 {
+                 return Err(TinError::ArityMismatch(1, args.len()));
+             }
+             let lst = &args[0];
+             if let Exp::List(lst) = lst {
+                 Ok((lst.len() as i64).into())
+             } else {
+                 Err(TinError::TypeMismatch("List".to_string(), lst.to_string()))
+             }
+            }),
+            "list" => Closure::new(|args| Ok(Exp::List(List::from(args.to_vec())))),
+            "max" => Closure::new(|_| unimplemented!()),
+            "map" => Closure::new(|_| unimplemented!()),
+            "min" => Closure::new(|_| unimplemented!()),
+            "null?" => Closure::new(|args| {
+                if args.len() == 1 {
+                    if let Exp::List(x) = &args[0] {
+                        return Ok((x.len() == 0).into())
+                    }
+                }
+                Ok(false.into())
+            }),
+            "number?" => Closure::new(|args| {
+                if args.len() == 1 {
+                    if let Exp::Atom(Atom::Number(_)) = &args[0] {
+                        return Ok(true.into())
+                    }
+                }
+                Ok(false.into())
+            }),
+            "round" => Closure::new(|args| {
+                if args.len() == 1 {
+                    let x = to_number!(args[0]);
+                    match to_number!(args[0]) {
+                        Number::Int(_) => Ok(x.into()),
+                        Number::Float(f) => Ok(Number::Int(f.round() as i64).into())
+                    }
+                } else {
+                    Err(TinError::ArityMismatch(1, args.len()))
+                }
+            }),
+            "symbol" => Closure::new(|args| {
+                Ok((args.len() == 0 && (
+                    if let Exp::Atom(Atom::Symbol(_)) = args[0] {
+                        true
+                    } else {
+                        false
+                    })).into())
+            })
+
+        };
+        Environment { env, outer: None }
     }
 
     pub fn from(params: &[Symbol], args: &[Exp], outer: EnvironmentRef) -> Self {
