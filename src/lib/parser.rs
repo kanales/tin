@@ -137,8 +137,14 @@ fn from_tokens(tokens: &mut Peekable<TokenIter>) -> TinResult<Exp> {
                 v.push(from_tokens(tokens)?);
             }
             tokens.next();
+            let mut lst = List::new();
+            for exp in v.into_iter().rev() {
+                lst.push(exp);
+            }
 
-            return Ok(Exp::Vector(v));
+            lst.push(Exp::Atom(Atom::Symbol("make-vector".to_string())));
+
+            Ok(Exp::List(lst))
         }
         Some(Token::Popen) => {
             let mut v = Vec::new();

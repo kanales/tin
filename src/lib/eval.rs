@@ -122,7 +122,8 @@ fn define(env: EnvironmentRef, s: Symbol, body: Exp) -> TinResult<()> {
     if let Exp::Proc(p) = body {
         env.borrow_mut().insert(s, Exp::Proc(p));
     } else {
-        env.borrow_mut().insert(s, eval(env.clone(), body)?);
+        let res = eval(env.clone(), body)?;
+        env.borrow_mut().insert(s, res);
     }
     Ok(())
 }
@@ -156,6 +157,13 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, mut args: List) -> TinResult<Exp
                 Ok(args.head().unwrap().clone())
             }
         }
+        "make-vector" => {
+            let mut out = Vec::new();
+            for arg in args {
+                out.push(eval(env.clone(), arg.clone())?);
+            }
+            Ok(Exp::Vector(out))
+        }
         "make-hash" => {
             if args.len() % 2 != 0 {
                 println!("{:?}", args);
@@ -186,7 +194,7 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, mut args: List) -> TinResult<Exp
                 eval(env, ko)
             }
         }
-        "define" => {
+        "define" | "def" => {
             if args.len() != 2 {
                 return Err(ArityMismatch(2, args.len()));
             }
@@ -236,14 +244,21 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, mut args: List) -> TinResult<Exp
                 ))
             }
         }
-        "display" => {
+        "print" => {
             if args.len() != 1 {
                 return Err(ArityMismatch(1, args.len()));
             }
             println!("{}", eval(env, args.pop().unwrap())?);
             Ok(Exp::List(List::new()))
         }
-        "lambda" => {
+        "eprint" => {
+            if args.len() != 1 {
+                return Err(ArityMismatch(1, args.len()));
+            }
+            eprintln!("{}", eval(env, args.pop().unwrap())?);
+            Ok(Exp::List(List::new()))
+        }
+        "lambda" | "λ" => {
             if args.len() != 2 {
                 return Err(ArityMismatch(2, args.len()));
             }

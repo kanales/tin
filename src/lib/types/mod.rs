@@ -193,7 +193,7 @@ impl Map {
     }
 
     pub fn len(&self) -> Number {
-        self.0.len()
+        Number::Int(self.0.len() as i64)
     }
 
     pub fn includes(&self, k: &Key) -> bool {
