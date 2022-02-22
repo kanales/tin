@@ -1,5 +1,18 @@
 # Tin
 
+
+<a
+   style="display: block;
+  margin-left: auto;
+  margin-right: auto;
+  width: 50%;"
+   title="Sun Ladder, CC BY-SA 3.0 &lt;https://creativecommons.org/licenses/by-sa/3.0&gt;, via Wikimedia Commons" 
+   href="https://commons.wikimedia.org/wiki/File:Empty_tin_can2009-01-19.jpg">
+    <img 
+         width="256" alt="Empty tin can2009-01-19" 
+         src="https://upload.wikimedia.org/wikipedia/commons/thumb/a/a8/Empty_tin_can2009-01-19.jpg/256px-Empty_tin_can2009-01-19.jpg">
+</a>
+
 Tin is a lisp implemented in rust. 
 
 ## Features
