@@ -10,7 +10,11 @@ fn main() {
         match std::io::stdin().read_line(&mut buffer) {
             Ok(_) => {
                 match tin.eval_str(&buffer) {
-                    Ok(r) => eprintln!("{}", r),
+                    Ok(r) => {
+                        if !r.is_null() {
+                            eprintln!("{}", r)
+                        }
+                    }
                     Err(e) => eprintln!("Error: {:?}", e),
                 }
                 eprint!("> ");

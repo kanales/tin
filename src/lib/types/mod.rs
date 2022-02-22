@@ -1,7 +1,8 @@
 mod environment;
 mod list;
 use crate::lib::eval::eval;
-use std::convert::From;
+use std::collections::HashMap;
+use std::convert::{From, TryFrom, TryInto};
 
 pub type Symbol = String;
 #[derive(Debug, PartialEq, Clone, Copy, PartialOrd)]
@@ -9,6 +10,7 @@ pub enum Number {
     Int(i64),
     Float(f64),
 }
+pub static NUMBER: &str = "number";
 
 impl From<i64> for Number {
     fn from(x: i64) -> Self {
@@ -19,6 +21,19 @@ impl From<i64> for Number {
 impl From<f64> for Number {
     fn from(x: f64) -> Self {
         Number::Float(x)
+    }
+}
+
+impl TryFrom<Exp> for Number {
+    type Error = TinError;
+    fn try_from(value: Exp) -> Result<Self, Self::Error> {
+        match value {
+            Exp::Atom(Atom::Number(n)) => Ok(n),
+            _ => Err(TinError::TypeMismatch(
+                NUMBER.to_string(),
+                value.to_string(),
+            )),
+        }
     }
 }
 
@@ -77,6 +92,13 @@ impl Div for Number {
 }
 
 impl Number {
+    pub fn floor(&self) -> Self {
+        match self {
+            Number::Int(n) => Number::Int(*n),
+            Number::Float(f) => Number::Int(f.floor() as i64),
+        }
+    }
+
     pub fn abs(&self) -> Self {
         match self {
             Number::Int(n) => Number::Int(if *n < 0 { -n } else { *n }),
@@ -90,6 +112,7 @@ pub enum Atom {
     Symbol(Symbol),
     Number(Number),
     Bool(bool),
+    Char(char),
 }
 
 impl From<String> for Atom {
@@ -112,11 +135,91 @@ impl From<bool> for Atom {
 
 pub use list::List;
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Key {
+    Int(i64),
+    Bool(bool),
+    Symbol(String),
+    Char(char),
+    String(String),
+}
+
+impl From<Key> for Exp {
+    fn from(k: Key) -> Self {
+        match k {
+            Key::Int(i) => Exp::Atom(Atom::Number(Number::Int(i))),
+            Key::String(s) => Exp::String(s),
+            Key::Bool(b) => Exp::Atom(Atom::Bool(b)),
+            Key::Symbol(s) => Exp::Atom(Atom::Symbol(s)),
+            Key::Char(s) => Exp::Atom(Atom::Char(s)),
+        }
+    }
+}
+
+impl TryFrom<Exp> for Key {
+    type Error = TinError;
+
+    fn try_from(value: Exp) -> Result<Self, Self::Error> {
+        match value {
+            Exp::Atom(Atom::Number(Number::Int(n))) => Ok(Key::Int(n)),
+            Exp::String(s) => Ok(Key::String(s)),
+            Exp::Atom(Atom::Bool(b)) => Ok(Key::Bool(b)),
+            Exp::Atom(Atom::Symbol(s)) => Ok(Key::Symbol(s)),
+            Exp::Atom(Atom::Char(s)) => Ok(Key::Char(s)),
+            _ => Err(TinError::TypeMismatch(
+                "Hashable".to_string(),
+                value.to_string(),
+            )),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Map(HashMap<Key, Exp>);
+
+impl PartialEq for Map {
+    fn eq(&self, other: &Self) -> bool {
+        std::ptr::addr_of!(self) == std::ptr::addr_of!(other)
+    }
+}
+
+type Pairs<'a> = std::iter::Map<
+    std::collections::hash_map::Iter<'a, Key, Exp>,
+    fn((&'a Key, &'a Exp)) -> (Exp, Exp),
+>;
+impl Map {
+    pub fn new() -> Self {
+        Map(HashMap::new())
+    }
+
+    pub fn includes(&self, k: &Key) -> bool {
+        self.0.contains_key(k)
+    }
+
+    pub fn try_insert(&mut self, k: Exp, v: Exp) -> TinResult<()> {
+        self.0.insert(k.try_into()?, v);
+        Ok(())
+    }
+
+    pub fn iter(&self) -> Pairs {
+        self.0.iter().map(|(k, v)| (k.clone().into(), v.clone()))
+    }
+}
+
+impl std::ops::Index<&Key> for Map {
+    type Output = Exp;
+    fn index(&self, index: &Key) -> &Self::Output {
+        &self.0[index]
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Exp {
     Atom(Atom),
     List(List),
+    Vector(Vec<Exp>),
     String(String),
+    Map(Map),
     Macro(Macro),
     Proc(Proc),
     Closure(Closure),
@@ -146,20 +249,31 @@ impl From<Closure> for Exp {
     }
 }
 
+type Expect = String;
+type Got = String;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum TinError {
     SyntaxError(String),
-    TypeMismatch(String, String),
+    TypeMismatch(Expect, Got),
     NotAProcedure(Exp),
     NotASymbol(Exp),
     ArityMismatch(usize, usize),
     Undefined(Symbol),
+    KeyNotFound(Key),
+    OutOfRange(usize),
     Null,
 }
 
 pub type TinResult<R> = Result<R, TinError>;
 
 impl Exp {
+    pub fn is_null(&self) -> bool {
+        if let Exp::List(l) = self {
+            return l.is_empty();
+        }
+        false
+    }
     pub fn truthy(&self) -> bool {
         if let Exp::Atom(Atom::Bool(false)) = self {
             false
@@ -191,10 +305,25 @@ impl fmt::Display for Exp {
             Exp::Atom(Atom::Number(Number::Int(n))) => write!(f, "{}", n),
             Exp::Atom(Atom::Number(Number::Float(n))) => write!(f, "{}", n),
             Exp::Atom(Atom::Bool(b)) => write!(f, "{}", b),
+            Exp::Atom(Atom::Char(c)) => write!(f, "\\{}", c),
             Exp::String(s) => write!(f, "\"{}\"", s),
             Exp::Macro(_) => write!(f, "#macro"),
             Exp::Proc(_) => write!(f, "#proc"),
             Exp::Closure(_) => write!(f, "#proc"),
+            Exp::Map(m) => {
+                write!(f, "{{ ")?;
+                for (k, v) in m.iter() {
+                    write!(f, "{} {} ", k, v)?;
+                }
+                write!(f, "}}")
+            }
+            Exp::Vector(v) => {
+                write!(f, "[ ")?;
+                for exp in v {
+                    write!(f, "{} ", exp)?;
+                }
+                write!(f, "]")
+            }
             Exp::List(l) => {
                 write!(f, "( ")?;
                 for exp in l.clone() {
@@ -269,15 +398,45 @@ impl PartialEq for Closure {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Pattern {
+    Symbol(Symbol),
+    List(Vec<Pattern>),
+}
+
+impl TryFrom<List> for Pattern {
+    type Error = TinError;
+
+    fn try_from(value: List) -> Result<Self, Self::Error> {
+        let vals: Vec<_> = value.map(|x| x.try_into()).collect::<TinResult<_>>()?;
+        Ok(Pattern::List(vals))
+    }
+}
+
+impl TryFrom<Exp> for Pattern {
+    type Error = TinError;
+
+    fn try_from(value: Exp) -> Result<Self, Self::Error> {
+        match value {
+            Exp::Atom(Atom::Symbol(sym)) => Ok(Pattern::Symbol(sym)),
+            Exp::List(lst) => lst.try_into(),
+            _ => Err(TinError::TypeMismatch(
+                "Symbol | List".into(),
+                value.to_string(),
+            )),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Macro {
-    params: List,
+    params: Vec<Pattern>,
     arity: usize,
     rule: Box<Exp>,
 }
 
 impl Macro {
-    pub fn new(params: List, rule: Exp) -> Self {
+    pub fn new(params: Vec<Pattern>, rule: Exp) -> Self {
         let arity = params.len();
         Macro {
             params,
@@ -289,13 +448,14 @@ impl Macro {
         if args.len() != self.arity {
             return Err(TinError::ArityMismatch(self.arity, args.len()));
         }
+        unimplemented!();
 
-        let params = self.params.clone();
-        let mut res: Exp = *self.rule.clone();
-        for (i, param) in params.enumerate() {
-            res = res.replace(&param, args[i].clone());
-        }
-        Ok(res)
+        //         let params = self.params.clone();
+        //         let mut res: Exp = *self.rule.clone();
+        //         for (i, param) in params.enumerate() {
+        //             res = res.replace(&param, args[i].clone());
+        //         }
+        // Ok(res)
     }
 }
 

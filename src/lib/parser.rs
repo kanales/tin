@@ -1,13 +1,19 @@
 use std::iter::Peekable;
 use std::str::Chars;
 
-use crate::lib::types::{Atom, Exp, List, Number, TinError, TinResult};
+use crate::lib::types::{Atom, Exp, List, Map, Number, TinError, TinResult};
 
 #[derive(Debug, PartialEq, Eq)]
 enum Token {
     Popen,
     Pclose,
+    Vopen,
+    Mopen,
+    Mclose,
+    Vclose,
     Quote,
+    Quasi,
+    Unquote,
     Atom(String),
     String(String),
 }
@@ -32,10 +38,14 @@ impl<'a> Iterator for TokenIter<'a> {
         match state {
             State::Initial => match self.input.next()? {
                 '(' => Some(Token::Popen),
-                '[' => Some(Token::Popen),
+                '[' => Some(Token::Vopen),
+                '{' => Some(Token::Mopen),
+                '}' => Some(Token::Mclose),
                 ')' => Some(Token::Pclose),
-                ']' => Some(Token::Pclose),
+                ']' => Some(Token::Vclose),
                 '\'' => Some(Token::Quote),
+                '`' => Some(Token::Quasi),
+                ',' => Some(Token::Unquote),
                 ' ' => self.next(),
                 '"' => {
                     self.state = State::MatchingString(Vec::new());
@@ -112,6 +122,24 @@ fn from_tokens(tokens: &mut Peekable<TokenIter>) -> TinResult<Exp> {
     match tokens.next() {
         None => Err(TinError::SyntaxError("Unexpected EOF".to_string())),
         Some(Token::Quote) => Ok(list!["quote".to_string().into(), from_tokens(tokens)?].into()),
+        Some(Token::Quasi) => Ok(list!["quasi".to_string().into(), from_tokens(tokens)?].into()),
+        Some(Token::Unquote) => {
+            Ok(list!["unquote".to_string().into(), from_tokens(tokens)?].into())
+        }
+        Some(Token::Vopen) => {
+            let mut v = Vec::new();
+            loop {
+                if let Some(c) = tokens.peek() {
+                    if *c == Token::Vclose {
+                        break;
+                    }
+                }
+                v.push(from_tokens(tokens)?);
+            }
+            tokens.next();
+
+            return Ok(Exp::Vector(v));
+        }
         Some(Token::Popen) => {
             let mut v = Vec::new();
             loop {
@@ -130,7 +158,28 @@ fn from_tokens(tokens: &mut Peekable<TokenIter>) -> TinResult<Exp> {
             }
             return Ok(Exp::List(lst));
         }
+        Some(Token::Mopen) => {
+            let mut v = Vec::new();
+            loop {
+                if let Some(c) = tokens.peek() {
+                    if *c == Token::Mclose {
+                        break;
+                    }
+                }
+                v.push(from_tokens(tokens)?);
+            }
+            tokens.next();
+            let mut lst = List::new();
+            for exp in v.into_iter().rev() {
+                lst.push(exp);
+            }
 
+            lst.push(Exp::Atom(Atom::Symbol("make-hash".to_string())));
+
+            Ok(Exp::List(lst))
+        }
+        Some(Token::Mclose) => Err(TinError::SyntaxError("Unexpected '}'".to_string())),
+        Some(Token::Vclose) => Err(TinError::SyntaxError("Unexpected ']'".to_string())),
         Some(Token::Pclose) => Err(TinError::SyntaxError("Unexpected ')'".to_string())),
         Some(Token::Atom(a)) => Ok(Exp::Atom(atom(a))),
         Some(Token::String(s)) => Ok(Exp::String(s)),
@@ -145,11 +194,55 @@ fn atom(token: String) -> Atom {
     if let Ok(r) = token.parse::<f64>() {
         return Atom::Number(Number::Float(r));
     }
+
     match token.as_ref() {
-        "#t" => Atom::Bool(true),
-        "#f" => Atom::Bool(false),
-        _ => Atom::Symbol(token),
+        "#t" => return Atom::Bool(true),
+        "#f" => return Atom::Bool(false),
+        _ => (),
     }
+
+    if token.len() == 2 && token.starts_with("\\") {
+        return Atom::Char(token.chars().nth(1).unwrap());
+    }
+
+    if token.starts_with("#b") {
+        let chrs = &token[2..];
+        let mut acc = 0;
+        for c in chrs.chars() {
+            match c {
+                '1' => acc = acc * 2 + 1,
+                '0' => acc = acc * 2,
+                _ => return Atom::Symbol(token),
+            }
+        }
+        return Atom::Number(Number::Int(acc));
+    }
+
+    if token.starts_with("#o") {
+        let chrs = &token[2..];
+        let mut acc = 0;
+        for c in chrs.chars() {
+            match c {
+                '0'..='7' => acc = acc * 8 + c.to_digit(8).unwrap(),
+                _ => return Atom::Symbol(token),
+            }
+        }
+        return Atom::Number(Number::Int(acc as i64));
+    }
+
+    if token.starts_with("#x") {
+        let chrs = &token[2..];
+        let mut acc = 0;
+        for c in chrs.chars() {
+            match c {
+                '0'..='9' | 'a'..='f' => acc = acc * 16 + c.to_digit(16).unwrap(),
+                _ => return Atom::Symbol(token),
+            }
+        }
+        return Atom::Number(Number::Int(acc as i64));
+    }
+
+    Atom::Symbol(token)
 }
 
 pub fn parse(program: &str) -> TinResult<Exp> {

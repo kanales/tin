@@ -1,5 +1,7 @@
+use std::convert::TryInto;
+
 use crate::lib::types::*;
-use crate::{list, to_list, to_symbol};
+use crate::{list, to_list, to_number, to_symbol};
 use TinError::{ArityMismatch, NotAProcedure};
 
 pub fn eval(env: EnvironmentRef, x: Exp) -> TinResult<Exp> {
@@ -56,12 +58,43 @@ fn eval_rec_test() {
         eval(env, input)
     );
 }
+
+fn eval_vector(env: EnvironmentRef, v: Vec<Exp>, args: List) -> TinResult<Exp> {
+    if args.len() == 1 {
+        let head = to_number!(eval(env.clone(), args.head().unwrap().clone())?).floor();
+        if let Number::Int(idx) = head {
+            let idx = idx as usize;
+            if idx >= v.len() {
+                return Err(TinError::OutOfRange(idx));
+            }
+            return Ok(v[idx - 1].clone());
+        }
+        unreachable!()
+    } else {
+        Err(TinError::ArityMismatch(1, args.len()))
+    }
+}
+
+fn eval_map(env: EnvironmentRef, m: Map, args: List) -> TinResult<Exp> {
+    if args.len() == 1 {
+        let key: Key = eval(env.clone(), args.head().unwrap().clone())?.try_into()?;
+        if !m.includes(&key) {
+            return Err(TinError::KeyNotFound(key));
+        }
+        return Ok(m[&key].clone());
+    } else {
+        Err(TinError::ArityMismatch(1, args.len()))
+    }
+}
+
 fn eval_list(env: EnvironmentRef, op: Exp, args: List) -> TinResult<Exp> {
     match op {
         Exp::Atom(Atom::Symbol(s)) => eval_symbol(env, s, args),
         Exp::Proc(p) => p.eval(&args.as_vec()),
         Exp::Closure(p) => p.eval(&args.as_vec()),
         Exp::Macro(m) => m.expand(&args.as_vec()),
+        Exp::Vector(v) => eval_vector(env, v, args),
+        Exp::Map(m) => eval_map(env, m, args),
         x => match eval(env.clone(), x)? {
             Exp::Atom(Atom::Symbol(s)) => eval_symbol(env, s, args),
             Exp::Atom(x) => Err(TinError::NotAProcedure(Exp::Atom(x))),
@@ -109,8 +142,9 @@ fn lambda(env: EnvironmentRef, params: List, body: Exp) -> TinResult<Exp> {
 }
 
 fn defmacro(env: EnvironmentRef, name: Symbol, params: List, rule: Exp) -> TinResult<()> {
-    let m = Macro::new(params, rule);
-    define(env, name, m.into())
+    unimplemented!()
+    // let m = Macro::new(params, rule);
+    // define(env, name, m.into())
 }
 
 fn eval_symbol(env: EnvironmentRef, op: Symbol, mut args: List) -> TinResult<Exp> {
@@ -121,6 +155,21 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, mut args: List) -> TinResult<Exp
             } else {
                 Ok(args.head().unwrap().clone())
             }
+        }
+        "make-hash" => {
+            if args.len() % 2 != 0 {
+                println!("{:?}", args);
+                return Err(TinError::SyntaxError("Unbalanced map".to_string()));
+            }
+
+            let mut m = Map::new();
+            for c in args.as_vec().chunks(2) {
+                let key = eval(env.clone(), c[0].clone())?;
+                let val = eval(env.clone(), c[1].clone())?;
+                m.try_insert(key, val)?;
+            }
+
+            return Ok(Exp::Map(m));
         }
         "if" => {
             if args.len() != 3 {
@@ -249,6 +298,8 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, mut args: List) -> TinResult<Exp
 
                     eval(env, m.expand(&vals)?)
                 }
+                Exp::Vector(v) => eval_vector(env, v, args),
+                Exp::Map(m) => eval_map(env, m, args),
                 _ => Err(TinError::NotAProcedure(head)),
             }
         }
