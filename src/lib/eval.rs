@@ -67,7 +67,7 @@ fn eval_vector(env: EnvironmentRef, v: Vec<Exp>, args: List) -> TinResult<Exp> {
             if idx >= v.len() {
                 return Err(TinError::OutOfRange(idx));
             }
-            return Ok(v[idx - 1].clone());
+            return Ok(v[idx].clone());
         }
         unreachable!()
     } else {
