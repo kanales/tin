@@ -64,11 +64,11 @@ impl Environment {
               if args.len() != 1 {
                  return Err(TinError::ArityMismatch(1, args.len()));
              }
-             let lst = &args[0];
-             if let Exp::List(lst) = lst {
-                 Ok((lst.len() as i64).into())
-             } else {
-                 Err(TinError::TypeMismatch("List".to_string(), lst.to_string()))
+             match &args[0] {
+                Exp::List(lst) => Ok((lst.len() as i64).into()),
+                Exp::Vector(v) => Ok((v.len() as i64).into()),
+                Exp::Map(m) => Ok(m.len().into()),
+                _ => Err(TinError::TypeMismatch("list | vector | hash".to_string(), args[0].to_string()))
              }
             }),
             "list" => Closure::new(|args| Ok(Exp::List(List::from(args.to_vec())))),
@@ -102,7 +102,7 @@ impl Environment {
                     Err(TinError::ArityMismatch(1, args.len()))
                 }
             }),
-            "symbol" => Closure::new(|args| {
+            "symbol?" => Closure::new(|args| {
                 Ok((args.len() == 0 && (
                     if let Exp::Atom(Atom::Symbol(_)) = args[0] {
                         true

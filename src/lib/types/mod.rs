@@ -192,6 +192,10 @@ impl Map {
         Map(HashMap::new())
     }
 
+    pub fn len(&self) -> Number {
+        self.0.len()
+    }
+
     pub fn includes(&self, k: &Key) -> bool {
         self.0.contains_key(k)
     }
