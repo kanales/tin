@@ -1,7 +1,10 @@
 use std::convert::{TryFrom, TryInto};
 
-use crate::lib::types::*;
-use crate::{list, to_list, to_symbol};
+use crate::lib::types::{
+    Atom, Closure, EnvironmentRef, Evaluable, Exp, Key, List, Map, Number, Proc, Symbol, TinError,
+    TinResult,
+};
+use crate::{list, to_symbol};
 use TinError::{ArityMismatch, NotAProcedure};
 
 pub fn eval(env: EnvironmentRef, x: Exp) -> TinResult<Exp> {
@@ -279,7 +282,7 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, mut args: List) -> TinResult<Exp
                 return Err(TinError::ArityMismatch(3, args.len()));
             }
             let name = to_symbol!(args.pop().unwrap());
-            let params = to_list!(args.pop().unwrap());
+            let params = args.pop().unwrap().try_into()?;
             let rule = args.pop().unwrap();
 
             defmacro(env, name, params, rule)?;

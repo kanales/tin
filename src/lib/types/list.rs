@@ -1,4 +1,8 @@
+use std::convert::{From, TryFrom};
+
 use crate::lib::types::{Atom, Exp, Symbol};
+
+use super::TinError;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct List {
@@ -98,6 +102,16 @@ impl From<Vec<Exp>> for List {
             this.push(e);
         }
         this
+    }
+}
+
+impl TryFrom<Exp> for List {
+    type Error = TinError;
+    fn try_from(value: Exp) -> Result<Self, Self::Error> {
+        match value {
+            Exp::List(lst) => Ok(lst),
+            _ => Err(TinError::TypeMismatch("list".into(), format!("{}", value))),
+        }
     }
 }
 
