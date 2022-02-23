@@ -8,7 +8,6 @@ pub enum Number {
     Int(i64),
     Float(f64),
 }
-pub static NUMBER: &str = "number";
 
 impl From<i64> for Number {
     fn from(x: i64) -> Self {
@@ -28,12 +27,26 @@ impl TryFrom<Exp> for Number {
         match value {
             Exp::Atom(Atom::Number(n)) => Ok(n),
             _ => Err(TinError::TypeMismatch(
-                NUMBER.to_string(),
-                value.to_string(),
+                "number".to_string(),
+                format!("{:?}", value),
             )),
         }
     }
 }
+
+impl TryFrom<&Exp> for Number {
+    type Error = TinError;
+    fn try_from(value: &Exp) -> Result<Self, Self::Error> {
+        match value {
+            Exp::Atom(Atom::Number(n)) => Ok(*n),
+            _ => Err(TinError::TypeMismatch(
+                "number".to_string(),
+                format!("{:?}", value),
+            )),
+        }
+    }
+}
+
 impl Add for Number {
     type Output = Self;
 

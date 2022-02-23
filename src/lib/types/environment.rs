@@ -9,6 +9,7 @@ pub struct Environment {
     outer: Option<Box<EnvironmentRef>>,
 }
 
+use std::convert::TryFrom;
 use std::rc::Rc;
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnvironmentRef(Rc<RefCell<Environment>>);
@@ -93,9 +94,8 @@ impl Environment {
             }),
             "round" => Closure::new(|args| {
                 if args.len() == 1 {
-                    let x = to_number!(args[0]);
-                    match to_number!(args[0]) {
-                        Number::Int(_) => Ok(x.into()),
+                    match  Number::try_from(args[0].clone())? {
+                        Number::Int(x) => Ok(x.into()),
                         Number::Float(f) => Ok(Number::Int(f.round() as i64).into())
                     }
                 } else {

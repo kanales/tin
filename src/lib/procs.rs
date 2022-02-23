@@ -1,3 +1,5 @@
+use std::convert::{TryFrom, TryInto};
+
 use crate::lib::types::{Atom, Exp, Number, TinError, TinResult};
 
 fn ensure_arity<T>(want: usize, args: &[T]) -> TinResult<()> {
@@ -10,7 +12,7 @@ fn ensure_arity<T>(want: usize, args: &[T]) -> TinResult<()> {
 pub fn add(args: &[Exp]) -> TinResult<Exp> {
     let mut acc = Number::Int(0);
     for el in args {
-        acc = acc + to_number!(*el);
+        acc = acc + Number::try_from(el)?;
     }
     Ok(Exp::Atom(Atom::Number(acc)))
 }
@@ -19,17 +21,17 @@ pub fn sub(args: &[Exp]) -> TinResult<Exp> {
     let mut acc = if args.len() < 1 {
         return Err(TinError::ArityMismatch(1, 0));
     } else {
-        to_number!(args[0])
+        args[0].clone().try_into()?
     };
     for el in &args[1..] {
-        acc = acc - to_number!(*el);
+        acc = acc - el.try_into()?;
     }
     Ok(Exp::Atom(Atom::Number(acc)))
 }
 pub fn mul(args: &[Exp]) -> TinResult<Exp> {
     let mut acc = Number::Int(1);
     for el in args {
-        acc = acc * to_number!(*el);
+        acc = acc * el.try_into()?;
     }
     Ok(Exp::Atom(Atom::Number(acc)))
 }
@@ -38,24 +40,24 @@ pub fn div(args: &[Exp]) -> TinResult<Exp> {
     let mut acc = if args.len() < 1 {
         return Err(TinError::ArityMismatch(1, 0));
     } else {
-        to_number!(args[0])
+        args[0].clone().try_into()?
     };
     for el in &args[1..] {
-        acc = acc / to_number!(*el);
+        acc = acc / el.try_into()?;
     }
     Ok(Exp::Atom(Atom::Number(acc)))
 }
 
 pub fn abs(args: &[Exp]) -> TinResult<Exp> {
     ensure_arity(1, args)?;
-    let n = to_number!(args[0]);
+    let n: Number = args[0].clone().try_into()?;
     Ok(Exp::Atom(Atom::Number(n.abs())))
 }
 
 pub fn eq(args: &[Exp]) -> TinResult<Exp> {
     ensure_arity(2, args)?;
-    let a = to_number!(args[0]);
-    let b = to_number!(args[1]);
+    let a = args[0].clone().try_into()?;
+    let b = args[1].clone().try_into()?;
     Ok(Exp::Atom(Atom::Bool(match (a, b) {
         (Number::Int(a), Number::Int(b)) => a == b,
         (Number::Float(a), Number::Int(b)) => {
@@ -80,8 +82,8 @@ macro_rules! ord_op {
     ($id:ident) => {
         pub fn $id(args: &[Exp]) -> TinResult<Exp> {
             ensure_arity(2, args)?;
-            let a = to_number!(args[0]);
-            let b = to_number!(args[1]);
+            let a = Number::try_from(args[0].clone())?;
+            let b = Number::try_from(args[1].clone())?;
             let res = a.$id(&b);
 
             Ok(Exp::Atom(Atom::Bool(res)))

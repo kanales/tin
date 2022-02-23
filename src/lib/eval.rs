@@ -1,7 +1,7 @@
-use std::convert::TryInto;
+use std::convert::{TryFrom, TryInto};
 
 use crate::lib::types::*;
-use crate::{list, to_list, to_number, to_symbol};
+use crate::{list, to_list, to_symbol};
 use TinError::{ArityMismatch, NotAProcedure};
 
 pub fn eval(env: EnvironmentRef, x: Exp) -> TinResult<Exp> {
@@ -61,7 +61,8 @@ fn eval_rec_test() {
 
 fn eval_vector(env: EnvironmentRef, v: Vec<Exp>, args: List) -> TinResult<Exp> {
     if args.len() == 1 {
-        let head = to_number!(eval(env.clone(), args.head().unwrap().clone())?).floor();
+        let res = eval(env.clone(), args.head().unwrap().clone())?;
+        let head = Number::try_from(res)?.floor();
         if let Number::Int(idx) = head {
             let idx = idx as usize;
             if idx >= v.len() {
