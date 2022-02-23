@@ -112,6 +112,8 @@ impl Environment {
             })
 
         };
+
+        println!("{:?}", env);
         Environment { env, outer: None }
     }
 
@@ -122,7 +124,7 @@ impl Environment {
         let mut this = Environment::new();
 
         for (i, a) in args.into_iter().enumerate() {
-            this.env.insert(params[i].to_string(), a.clone());
+            this.env.insert(params[i].clone().into(), a.clone());
         }
 
         this.outer = Some(Box::new(outer.clone()));
@@ -154,12 +156,12 @@ impl Environment {
 fn env_test() {
     let env = EnvironmentRef::new();
     let inner = EnvironmentRef::from(
-        &vec!["x".to_string()],
-        &vec![Exp::Atom(Atom::Symbol("x".to_string()))],
+        &vec!["x".into()],
+        &vec![Exp::Atom(Atom::Symbol("x".into()))],
         env.clone(),
     );
     env.borrow_mut()
-        .insert("y".to_string(), Exp::Atom(Atom::Symbol("y".to_string())));
-    let res = inner.borrow().get(&"y".to_string()).unwrap();
-    assert_eq!(res, Exp::Atom(Atom::Symbol("y".to_string())))
+        .insert("y".into(), Exp::Atom(Atom::Symbol("y".into())));
+    let res = inner.borrow().get(&"y".into()).unwrap();
+    assert_eq!(res, Exp::Atom(Atom::Symbol("y".into())))
 }

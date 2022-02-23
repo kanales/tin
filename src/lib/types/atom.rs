@@ -1,4 +1,3 @@
-
 use crate::lib::types::{Number, Symbol};
 #[derive(Debug, PartialEq, Clone)]
 pub enum Atom {
@@ -9,7 +8,7 @@ pub enum Atom {
 }
 impl From<String> for Atom {
     fn from(x: String) -> Self {
-        Atom::Symbol(x)
+        Atom::Symbol(x.into())
     }
 }
 

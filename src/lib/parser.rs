@@ -142,7 +142,7 @@ fn from_tokens(tokens: &mut Peekable<TokenIter>) -> TinResult<Exp> {
                 lst.push(exp);
             }
 
-            lst.push(Exp::Atom(Atom::Symbol("make-vector".to_string())));
+            lst.push(Exp::Atom(Atom::Symbol("make-vector".into())));
 
             Ok(Exp::List(lst))
         }
@@ -180,7 +180,7 @@ fn from_tokens(tokens: &mut Peekable<TokenIter>) -> TinResult<Exp> {
                 lst.push(exp);
             }
 
-            lst.push(Exp::Atom(Atom::Symbol("make-hash".to_string())));
+            lst.push(Exp::Atom(Atom::Symbol("make-hash".into())));
 
             Ok(Exp::List(lst))
         }
@@ -218,7 +218,7 @@ fn atom(token: String) -> Atom {
             match c {
                 '1' => acc = acc * 2 + 1,
                 '0' => acc = acc * 2,
-                _ => return Atom::Symbol(token),
+                _ => return Atom::Symbol(token.into()),
             }
         }
         return Atom::Number(Number::Int(acc));
@@ -230,7 +230,7 @@ fn atom(token: String) -> Atom {
         for c in chrs.chars() {
             match c {
                 '0'..='7' => acc = acc * 8 + c.to_digit(8).unwrap(),
-                _ => return Atom::Symbol(token),
+                _ => return Atom::Symbol(token.into()),
             }
         }
         return Atom::Number(Number::Int(acc as i64));
@@ -242,13 +242,13 @@ fn atom(token: String) -> Atom {
         for c in chrs.chars() {
             match c {
                 '0'..='9' | 'a'..='f' => acc = acc * 16 + c.to_digit(16).unwrap(),
-                _ => return Atom::Symbol(token),
+                _ => return Atom::Symbol(token.into()),
             }
         }
         return Atom::Number(Number::Int(acc as i64));
     }
 
-    Atom::Symbol(token)
+    Atom::Symbol(token.into())
 }
 
 pub fn parse(program: &str) -> TinResult<Exp> {

@@ -4,15 +4,12 @@ use crate::lib::types::{
     Atom, Closure, EnvironmentRef, Evaluable, Exp, Key, List, Map, Number, Proc, Symbol, TinError,
     TinResult,
 };
-use crate::{list, to_symbol};
+use crate::list;
 use TinError::{ArityMismatch, NotAProcedure};
 
 pub fn eval(env: EnvironmentRef, x: Exp) -> TinResult<Exp> {
     match x {
-        Exp::Atom(Atom::Symbol(s)) => env
-            .borrow()
-            .get(&s)
-            .ok_or(TinError::Undefined(s.to_string())),
+        Exp::Atom(Atom::Symbol(s)) => env.borrow().get(&s).ok_or(TinError::Undefined(s.into())),
         Exp::List(lst) => match lst.snoc() {
             Some((head, tail)) => eval_list(env, head, tail),
             _ => Err(NotAProcedure(Exp::List(List::new()))),
@@ -24,7 +21,7 @@ pub fn eval(env: EnvironmentRef, x: Exp) -> TinResult<Exp> {
 #[test]
 fn eval_simple_test() {
     use crate::lib::parser::parse;
-    let env = EnvironmentRef::new();
+    let env = EnvironmentRef::default();
     let input = parse("( + 1 2 3 )").unwrap();
     assert_eq!(
         Ok(Exp::Atom(Atom::Number(Number::Int(6)))),
@@ -35,7 +32,7 @@ fn eval_simple_test() {
 #[test]
 fn eval_define_test() {
     use crate::lib::parser::parse;
-    let env = EnvironmentRef::new();
+    let env = EnvironmentRef::default();
     eval(env.clone(), parse("( define x 3 )").unwrap()).unwrap();
     let input = parse("( + x 4 )").unwrap();
 
@@ -48,7 +45,7 @@ fn eval_define_test() {
 #[test]
 fn eval_rec_test() {
     use crate::lib::parser::parse;
-    let env = EnvironmentRef::new();
+    let env = EnvironmentRef::default();
 
     eval(
         env.clone(),
@@ -112,7 +109,7 @@ fn eval_rustproc() {
     use crate::lib::parser::parse;
     let env = EnvironmentRef::new();
     env.borrow_mut().insert(
-        "foo".to_string(),
+        "foo".into(),
         Closure::new(|args| match (args[0].clone(), args[1].clone()) {
             (Exp::Atom(Atom::Number(x)), Exp::Atom(Atom::Number(y))) => Ok((x + y).into()),
             _ => unreachable!(),
@@ -214,7 +211,7 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, mut args: List) -> TinResult<Exp
                     None => Err(TinError::Null),
                     Some((def, args)) => {
                         let body = lambda(env.clone(), args, body)?;
-                        let def = to_symbol!(def);
+                        let def = def.try_into()?;
                         define(env, def, body)?;
 
                         Ok(Exp::List(List::new()))
@@ -239,7 +236,7 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, mut args: List) -> TinResult<Exp
 
             if let Exp::Atom(Atom::Symbol(sym)) = def {
                 let exp = eval(env.clone(), val)?;
-                env.borrow_mut().update(sym.to_string(), exp.clone());
+                env.borrow_mut().update(sym.into(), exp.clone());
                 Ok(exp)
             } else {
                 Err(TinError::TypeMismatch(
@@ -281,7 +278,7 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, mut args: List) -> TinResult<Exp
             if args.len() != 3 {
                 return Err(TinError::ArityMismatch(3, args.len()));
             }
-            let name = to_symbol!(args.pop().unwrap());
+            let name: Symbol = args.pop().unwrap().try_into()?;
             let params = args.pop().unwrap().try_into()?;
             let rule = args.pop().unwrap();
 
@@ -296,8 +293,8 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, mut args: List) -> TinResult<Exp
             let head = eval(
                 env.clone(),
                 env.borrow()
-                    .get(&x.to_string())
-                    .ok_or(TinError::Undefined(x.to_string()))?,
+                    .get(&x.into())
+                    .ok_or(TinError::Undefined(x.into()))?,
             )?;
             match head {
                 Exp::Proc(proc) => {

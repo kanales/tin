@@ -7,15 +7,15 @@ mod atom;
 mod macros;
 mod map;
 mod number;
+mod symbol;
 
 pub use atom::Atom;
 pub use list::List;
 pub use macros::Macro;
 pub use number::Number;
+pub use symbol::Symbol;
 
 pub use map::{Key, Map};
-
-pub type Symbol = String;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Exp {

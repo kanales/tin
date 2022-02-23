@@ -84,9 +84,9 @@ impl List {
 fn macro_test() {
     let mut lst = List::new();
     let (x, y, z) = (
-        Exp::Atom(Atom::Symbol("x".to_string())),
-        Exp::Atom(Atom::Symbol("x".to_string())),
-        Exp::Atom(Atom::Symbol("x".to_string())),
+        Exp::Atom(Atom::Symbol("x".into())),
+        Exp::Atom(Atom::Symbol("x".into())),
+        Exp::Atom(Atom::Symbol("x".into())),
     );
     lst.push(x.clone());
     lst.push(y.clone());

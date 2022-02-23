@@ -1,21 +1,6 @@
 // use crate::lib::types::{Atom, Exp, Number, TinError, TinResult};
 
 #[macro_export]
-macro_rules! to_symbol {
-    ($e:expr) => {
-        match $e {
-            Exp::Atom(Atom::Symbol(n)) => n,
-            _ => {
-                return Err(TinError::TypeMismatch(
-                    "Symbol".to_string(),
-                    format!("{:?}", $e),
-                ))
-            }
-        }
-    };
-}
-
-#[macro_export]
 macro_rules! list {
     () => {
         $crate::lib::types::List::new()

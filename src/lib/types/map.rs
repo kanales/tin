@@ -1,13 +1,14 @@
-
 use crate::lib::types::{Atom, Exp, Number, TinError, TinResult};
 use std::collections::hash_map::HashMap;
 use std::convert::{From, TryFrom, TryInto};
+
+use super::Symbol;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Key {
     Int(i64),
     Bool(bool),
-    Symbol(String),
+    Symbol(Symbol),
     Char(char),
     String(String),
 }
@@ -31,7 +32,7 @@ impl TryFrom<Exp> for Key {
             Exp::Atom(Atom::Number(Number::Int(n))) => Ok(Key::Int(n)),
             Exp::String(s) => Ok(Key::String(s)),
             Exp::Atom(Atom::Bool(b)) => Ok(Key::Bool(b)),
-            Exp::Atom(Atom::Symbol(s)) => Ok(Key::Symbol(s)),
+            Exp::Atom(Atom::Symbol(s)) => Ok(Key::Symbol(s.into())),
             Exp::Atom(Atom::Char(s)) => Ok(Key::Char(s)),
             _ => Err(TinError::TypeMismatch(
                 "Hashable".to_string(),
