@@ -5,6 +5,20 @@ pub struct List<T> {
     head: Link<T>,
 }
 
+fn len_rec<T>(lst: &List<T>, acc: usize) -> usize {
+    if lst.is_empty() {
+        acc
+    } else {
+        len_rec(&lst.tail(), acc + 1)
+    }
+}
+
+impl<T: Clone> From<List<T>> for Vec<T> {
+    fn from(lst: List<T>) -> Self {
+        lst.iter().map(|x| x.clone()).collect()
+    }
+}
+
 impl<T> List<T> {
     pub fn new() -> Self {
         List { head: None }
@@ -12,6 +26,14 @@ impl<T> List<T> {
 
     pub fn is_empty(&self) -> bool {
         self.head.is_none()
+    }
+
+    pub fn len(&self) -> usize {
+        len_rec(self, 0)
+    }
+
+    pub fn as_vec(&self) -> Vec<&T> {
+        self.iter().collect()
     }
 
     pub fn cons(&self, elem: T) -> List<T> {
@@ -103,7 +125,7 @@ impl<T> FromIterator<T> for List<T> {
 #[macro_export]
 macro_rules! list {
     [$($el:expr),*] => {
-        vec![$($el,)*].into()
+        List::from(vec![$($el,)*])
     };
 }
 

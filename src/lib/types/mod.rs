@@ -1,5 +1,4 @@
 mod environment;
-mod list;
 use crate::lib::eval::eval;
 use std::convert::From;
 

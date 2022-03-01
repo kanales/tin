@@ -4,14 +4,14 @@ use crate::lib::types::{
     Atom, Closure, EnvironmentRef, Evaluable, Exp, Key, List, Map, Number, Proc, Symbol, TinError,
     TinResult,
 };
-use crate::list;
+use persistent::list;
 use TinError::{ArityMismatch, NotAProcedure};
 
 pub fn eval(env: EnvironmentRef, x: Exp) -> TinResult<Exp> {
     match x {
         Exp::Atom(Atom::Symbol(s)) => env.borrow().get(&s).ok_or(TinError::Undefined(s.into())),
         Exp::List(lst) => match lst.snoc() {
-            Some((head, tail)) => eval_list(env, head, tail),
+            Some((head, tail)) => eval_list(env, head.clone(), tail),
             _ => Err(NotAProcedure(Exp::List(List::new()))),
         },
         _ => Ok(x),
@@ -88,12 +88,16 @@ fn eval_map(env: EnvironmentRef, m: Map, args: List) -> TinResult<Exp> {
     }
 }
 
+fn as_vec(lst: List) -> Vec<Exp> {
+    lst.into()
+}
+
 fn eval_list(env: EnvironmentRef, op: Exp, args: List) -> TinResult<Exp> {
     match op {
         Exp::Atom(Atom::Symbol(s)) => eval_symbol(env, s, args),
-        Exp::Proc(p) => p.eval(&args.as_vec()),
-        Exp::Closure(p) => p.eval(&args.as_vec()),
-        Exp::Macro(m) => m.expand(&args.as_vec()),
+        Exp::Proc(p) => p.eval(&as_vec(args)),
+        Exp::Closure(p) => p.eval(&as_vec(args)),
+        Exp::Macro(m) => m.expand(&as_vec(args)),
         Exp::Vector(v) => eval_vector(env, v, args),
         Exp::Map(m) => eval_map(env, m, args),
         x => match eval(env.clone(), x)? {
@@ -131,9 +135,10 @@ fn define(env: EnvironmentRef, s: Symbol, body: Exp) -> TinResult<()> {
 
 fn lambda(env: EnvironmentRef, params: List, body: Exp) -> TinResult<Exp> {
     let params = params
+        .iter()
         .map(|x| match x {
-            Exp::Atom(Atom::Symbol(x)) => Ok(x),
-            x => Err(TinError::NotASymbol(x)),
+            Exp::Atom(Atom::Symbol(x)) => Ok(x.clone()),
+            x => Err(TinError::NotASymbol(x.clone())),
         })
         .collect::<TinResult<Vec<_>>>()?;
     Ok(Exp::Proc(Proc::new(
@@ -143,13 +148,13 @@ fn lambda(env: EnvironmentRef, params: List, body: Exp) -> TinResult<Exp> {
     )))
 }
 
-fn defmacro(env: EnvironmentRef, name: Symbol, params: List, rule: Exp) -> TinResult<()> {
-    unimplemented!()
-    // let m = Macro::new(params, rule);
-    // define(env, name, m.into())
-}
+// fn defmacro(env: EnvironmentRef, name: Symbol, params: List, rule: Exp) -> TinResult<()> {
+//     unimplemented!()
+//     // let m = Macro::new(params, rule);
+//     // define(env, name, m.into())
+// }
 
-fn eval_symbol(env: EnvironmentRef, op: Symbol, mut args: List) -> TinResult<Exp> {
+fn eval_symbol(env: EnvironmentRef, op: Symbol, args: List) -> TinResult<Exp> {
     match op.as_ref() {
         "quote" => {
             if args.len() > 1 {
@@ -160,7 +165,7 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, mut args: List) -> TinResult<Exp
         }
         "make-vector" => {
             let mut out = Vec::new();
-            for arg in args {
+            for arg in args.iter() {
                 out.push(eval(env.clone(), arg.clone())?);
             }
             Ok(Exp::Vector(out))
@@ -184,23 +189,23 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, mut args: List) -> TinResult<Exp
             if args.len() != 3 {
                 return Err(ArityMismatch(3, args.len()));
             }
-            let (test, ok, ko) = (
-                args.pop().unwrap(),
-                args.pop().unwrap(),
-                args.pop().unwrap(),
-            );
-            if eval(env.clone(), test)?.truthy() {
-                eval(env, ok)
+            let (test, args) = args.snoc().unwrap();
+            let (ok, args) = args.snoc().unwrap();
+            let (ko, _) = args.snoc().unwrap();
+            if eval(env.clone(), test.clone())?.truthy() {
+                eval(env, ok.clone())
             } else {
-                eval(env, ko)
+                eval(env, ko.clone())
             }
         }
         "define" | "def" => {
             if args.len() != 2 {
                 return Err(ArityMismatch(2, args.len()));
             }
-            let def = args.pop().unwrap();
-            let body = args.pop().unwrap();
+            let (def, args) = args.snoc().unwrap();
+            let def = def.clone();
+            let (body, _) = args.snoc().unwrap();
+            let body = body.clone();
             match def {
                 Exp::Atom(Atom::Symbol(s)) => {
                     define(env, s, body)?;
@@ -211,7 +216,7 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, mut args: List) -> TinResult<Exp
                     None => Err(TinError::Null),
                     Some((def, args)) => {
                         let body = lambda(env.clone(), args, body)?;
-                        let def = def.try_into()?;
+                        let def = def.clone().try_into()?;
                         define(env, def, body)?;
 
                         Ok(Exp::List(List::new()))
@@ -222,8 +227,8 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, mut args: List) -> TinResult<Exp
         }
         "do" => {
             let mut last = Exp::List(list!());
-            for arg in args {
-                last = eval(env.clone(), arg)?;
+            for arg in args.iter() {
+                last = eval(env.clone(), arg.clone())?;
             }
             Ok(last)
         }
@@ -231,12 +236,12 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, mut args: List) -> TinResult<Exp
             if args.len() != 2 {
                 return Err(ArityMismatch(2, args.len()));
             }
-            let def = args.pop().unwrap();
-            let val = args.pop().unwrap();
+            let (def, args) = args.snoc().unwrap();
+            let val = args.head().unwrap();
 
             if let Exp::Atom(Atom::Symbol(sym)) = def {
-                let exp = eval(env.clone(), val)?;
-                env.borrow_mut().update(sym.into(), exp.clone());
+                let exp = eval(env.clone(), val.clone())?;
+                env.borrow_mut().update(sym.clone().into(), exp.clone());
                 Ok(exp)
             } else {
                 Err(TinError::TypeMismatch(
@@ -249,24 +254,24 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, mut args: List) -> TinResult<Exp
             if args.len() != 1 {
                 return Err(ArityMismatch(1, args.len()));
             }
-            println!("{}", eval(env, args.pop().unwrap())?);
+            println!("{}", eval(env, args.head().unwrap().clone())?);
             Ok(Exp::List(List::new()))
         }
         "eprint" => {
             if args.len() != 1 {
                 return Err(ArityMismatch(1, args.len()));
             }
-            eprintln!("{}", eval(env, args.pop().unwrap())?);
+            eprintln!("{}", eval(env, args.head().unwrap().clone())?);
             Ok(Exp::List(List::new()))
         }
         "lambda" | "λ" => {
             if args.len() != 2 {
                 return Err(ArityMismatch(2, args.len()));
             }
-            let params = args.pop().unwrap();
-            let body = args.pop().unwrap();
+            let (params, args) = args.snoc().unwrap();
+            let (body, _) = args.snoc().unwrap();
             if let Exp::List(params) = params {
-                lambda(env, params, body)
+                lambda(env, params.clone(), body.clone())
             } else {
                 Err(TinError::TypeMismatch(
                     "List".to_string(),
@@ -278,13 +283,14 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, mut args: List) -> TinResult<Exp
             if args.len() != 3 {
                 return Err(TinError::ArityMismatch(3, args.len()));
             }
-            let name: Symbol = args.pop().unwrap().try_into()?;
-            let params = args.pop().unwrap().try_into()?;
-            let rule = args.pop().unwrap();
+            // let (name, args) = args.snoc().unwrap();
+            // let (params, args) = args.snoc().unwrap();
+            // let (rule, _) = args.snoc().unwrap();
 
-            defmacro(env, name, params, rule)?;
+            unimplemented!()
 
-            Ok(Exp::List(List::new()))
+            // defmacro(env, name.try_into()?, params.try_into()?, rule)?;
+            // Ok(Exp::List(List::new()))
         }
         "macroexpand" => {
             unimplemented!()
@@ -299,18 +305,20 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, mut args: List) -> TinResult<Exp
             match head {
                 Exp::Proc(proc) => {
                     let args: Vec<_> = args
-                        .map(|a| eval(env.clone(), a))
+                        .iter()
+                        .map(|a| eval(env.clone(), a.clone()))
                         .collect::<TinResult<_>>()?;
                     proc.eval(&args)
                 }
                 Exp::Closure(proc) => {
                     let args: Vec<_> = args
-                        .map(|a| eval(env.clone(), a))
+                        .iter()
+                        .map(|a| eval(env.clone(), a.clone()))
                         .collect::<TinResult<_>>()?;
                     proc.eval(&args)
                 }
                 Exp::Macro(m) => {
-                    let vals: Vec<Exp> = args.collect();
+                    let vals: Vec<Exp> = args.into();
 
                     eval(env, m.expand(&vals)?)
                 }

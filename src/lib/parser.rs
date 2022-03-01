@@ -1,7 +1,7 @@
+use crate::lib::types::{Atom, Exp, List, Map, Number, TinError, TinResult};
+use persistent::list;
 use std::iter::Peekable;
 use std::str::Chars;
-
-use crate::lib::types::{Atom, Exp, List, Map, Number, TinError, TinResult};
 
 #[derive(Debug, PartialEq, Eq)]
 enum Token {
@@ -137,14 +137,11 @@ fn from_tokens(tokens: &mut Peekable<TokenIter>) -> TinResult<Exp> {
                 v.push(from_tokens(tokens)?);
             }
             tokens.next();
-            let mut lst = List::new();
-            for exp in v.into_iter().rev() {
-                lst.push(exp);
-            }
+            let lst: List = v.into();
 
-            lst.push(Exp::Atom(Atom::Symbol("make-vector".into())));
-
-            Ok(Exp::List(lst))
+            Ok(Exp::List(
+                lst.cons(Exp::Atom(Atom::Symbol("make-vector".into()))),
+            ))
         }
         Some(Token::Popen) => {
             let mut v = Vec::new();
@@ -158,11 +155,7 @@ fn from_tokens(tokens: &mut Peekable<TokenIter>) -> TinResult<Exp> {
             }
             tokens.next();
 
-            let mut lst = List::new();
-            for exp in v.into_iter().rev() {
-                lst.push(exp);
-            }
-            return Ok(Exp::List(lst));
+            return Ok(Exp::List(v.into()));
         }
         Some(Token::Mopen) => {
             let mut v = Vec::new();
@@ -175,14 +168,11 @@ fn from_tokens(tokens: &mut Peekable<TokenIter>) -> TinResult<Exp> {
                 v.push(from_tokens(tokens)?);
             }
             tokens.next();
-            let mut lst = List::new();
-            for exp in v.into_iter().rev() {
-                lst.push(exp);
-            }
 
-            lst.push(Exp::Atom(Atom::Symbol("make-hash".into())));
-
-            Ok(Exp::List(lst))
+            let lst: List = v.into();
+            Ok(Exp::List(
+                lst.cons(Exp::Atom(Atom::Symbol("make-hash".into()))),
+            ))
         }
         Some(Token::Mclose) => Err(TinError::SyntaxError("Unexpected '}'".to_string())),
         Some(Token::Vclose) => Err(TinError::SyntaxError("Unexpected ']'".to_string())),

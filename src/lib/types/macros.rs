@@ -1,4 +1,3 @@
-
 use super::{Atom, Exp, List, Symbol, TinError, TinResult};
 use std::convert::{TryFrom, TryInto};
 
@@ -12,7 +11,10 @@ impl TryFrom<List> for Pattern {
     type Error = TinError;
 
     fn try_from(value: List) -> Result<Self, Self::Error> {
-        let vals: Vec<_> = value.map(|x| x.try_into()).collect::<TinResult<_>>()?;
+        let vals: Vec<_> = value
+            .iter()
+            .map(|x| x.clone().try_into())
+            .collect::<TinResult<_>>()?;
         Ok(Pattern::List(vals))
     }
 }
