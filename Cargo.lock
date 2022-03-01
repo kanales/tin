@@ -3,5 +3,12 @@
 version = 3
 
 [[package]]
+name = "persistent"
+version = "0.1.0"
+
+[[package]]
 name = "tin"
 version = "0.2.0"
+dependencies = [
+ "persistent",
+]

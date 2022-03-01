@@ -10,12 +10,13 @@ mod number;
 mod symbol;
 
 pub use atom::Atom;
-pub use list::List;
 pub use macros::Macro;
 pub use number::Number;
 pub use symbol::Symbol;
 
 pub use map::{Key, Map};
+
+pub type List = persistent::list::List<Exp>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Exp {
@@ -95,7 +96,7 @@ impl Exp {
                     self
                 }
             }
-            Exp::List(lst) => Exp::List(lst.replace(pat, repl)),
+            Exp::List(lst) => unreachable!(), // Exp::List(lst.replace(pat, repl)),
             _ => self,
         }
     }
@@ -130,7 +131,7 @@ impl fmt::Display for Exp {
             }
             Exp::List(l) => {
                 write!(f, "( ")?;
-                for exp in l.clone() {
+                for exp in l.iter() {
                     write!(f, "{} ", exp)?;
                 }
                 write!(f, ")")
