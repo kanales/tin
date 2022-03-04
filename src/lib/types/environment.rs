@@ -7,31 +7,42 @@ use std::collections::hash_map::HashMap;
 pub struct Environment {
     env: HashMap<Symbol, Exp>,
     outer: Option<Box<EnvironmentRef>>,
+    counter: usize,
 }
 
 use std::convert::TryFrom;
 use std::rc::Rc;
 #[derive(Debug, Clone, PartialEq)]
-pub struct EnvironmentRef(Rc<RefCell<Environment>>);
+pub struct EnvironmentRef {
+    env: Rc<RefCell<Environment>>,
+}
 
 impl EnvironmentRef {
     pub fn new() -> Self {
-        EnvironmentRef(Rc::new(RefCell::new(Environment::new())))
+        EnvironmentRef {
+            env: Rc::new(RefCell::new(Environment::new())),
+        }
+    }
+
+    pub fn gensym(&self) -> Symbol {
+        self.env.borrow_mut().gensym()
     }
     pub fn default() -> Self {
-        EnvironmentRef(Rc::new(RefCell::new(Environment::default())))
+        EnvironmentRef {
+            env: Rc::new(RefCell::new(Environment::default())),
+        }
     }
 
     pub fn from(params: &[Symbol], args: &[Exp], outer: EnvironmentRef) -> Self {
-        EnvironmentRef(Rc::new(RefCell::new(Environment::from(
-            params, args, outer,
-        ))))
+        EnvironmentRef {
+            env: Rc::new(RefCell::new(Environment::from(params, args, outer))),
+        }
     }
     pub fn borrow_mut(&self) -> RefMut<Environment> {
-        self.0.borrow_mut()
+        self.env.borrow_mut()
     }
     pub fn borrow(&self) -> Ref<Environment> {
-        self.0.borrow()
+        self.env.borrow()
     }
 }
 
@@ -40,7 +51,13 @@ impl Environment {
         Environment {
             env: HashMap::new(),
             outer: None,
+            counter: 0,
         }
+    }
+    pub fn gensym(&mut self) -> Symbol {
+        let sym = Symbol::new(format!("G__{}", self.counter));
+        self.counter += 1;
+        sym
     }
     pub fn default() -> Self {
         let env = make_hash! {
@@ -86,7 +103,7 @@ impl Environment {
             }),
             "number?" => Closure::new(|args| {
                 if args.len() == 1 {
-                    if let Exp::Atom(Atom::Number(_)) = &args[0] {
+                    if let Exp::Number(_) = &args[0] {
                         return Ok(true.into())
                     }
                 }
@@ -104,7 +121,7 @@ impl Environment {
             }),
             "symbol?" => Closure::new(|args| {
                 Ok((args.len() == 0 && (
-                    if let Exp::Atom(Atom::Symbol(_)) = args[0] {
+                    if let Exp::Symbol(_) = args[0] {
                         true
                     } else {
                         false
@@ -112,9 +129,11 @@ impl Environment {
             })
 
         };
-
-        println!("{:?}", env);
-        Environment { env, outer: None }
+        Environment {
+            env,
+            outer: None,
+            counter: 0,
+        }
     }
 
     pub fn from(params: &[Symbol], args: &[Exp], outer: EnvironmentRef) -> Self {
@@ -157,11 +176,10 @@ fn env_test() {
     let env = EnvironmentRef::new();
     let inner = EnvironmentRef::from(
         &vec!["x".into()],
-        &vec![Exp::Atom(Atom::Symbol("x".into()))],
+        &vec![Exp::Symbol("x".into())],
         env.clone(),
     );
-    env.borrow_mut()
-        .insert("y".into(), Exp::Atom(Atom::Symbol("y".into())));
+    env.borrow_mut().insert("y".into(), Exp::Symbol("y".into()));
     let res = inner.borrow().get(&"y".into()).unwrap();
-    assert_eq!(res, Exp::Atom(Atom::Symbol("y".into())))
+    assert_eq!(res, Exp::Symbol("y".into()))
 }

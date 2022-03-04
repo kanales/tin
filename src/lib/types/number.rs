@@ -25,7 +25,7 @@ impl TryFrom<Exp> for Number {
     type Error = TinError;
     fn try_from(value: Exp) -> Result<Self, Self::Error> {
         match value {
-            Exp::Atom(Atom::Number(n)) => Ok(n),
+            Exp::Number(n) => Ok(n),
             _ => Err(TinError::TypeMismatch(
                 "number".to_string(),
                 format!("{:?}", value),
@@ -38,7 +38,7 @@ impl TryFrom<&Exp> for Number {
     type Error = TinError;
     fn try_from(value: &Exp) -> Result<Self, Self::Error> {
         match value {
-            Exp::Atom(Atom::Number(n)) => Ok(*n),
+            Exp::Number(n) => Ok(*n),
             _ => Err(TinError::TypeMismatch(
                 "number".to_string(),
                 format!("{:?}", value),

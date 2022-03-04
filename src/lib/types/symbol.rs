@@ -7,6 +7,12 @@ use std::{
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Symbol(String);
 
+impl Symbol {
+    pub fn new<I: ToString>(x: I) -> Self {
+        Symbol(x.to_string())
+    }
+}
+
 impl Display for Symbol {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
@@ -35,7 +41,7 @@ impl TryFrom<Exp> for Symbol {
 
     fn try_from(value: Exp) -> Result<Self, Self::Error> {
         match value {
-            Exp::Atom(Atom::Symbol(s)) => Ok(s),
+            Exp::Symbol(s) => Ok(s),
             _ => Err(TinError::TypeMismatch("symbol".into(), value.to_string())),
         }
     }

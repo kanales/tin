@@ -121,10 +121,10 @@ fn tokenize_test() {
 fn from_tokens(tokens: &mut Peekable<TokenIter>) -> TinResult<Exp> {
     match tokens.next() {
         None => Err(TinError::SyntaxError("Unexpected EOF".to_string())),
-        Some(Token::Quote) => Ok(list!["quote".to_string().into(), from_tokens(tokens)?].into()),
-        Some(Token::Quasi) => Ok(list!["quasi".to_string().into(), from_tokens(tokens)?].into()),
+        Some(Token::Quote) => Ok(list![Exp::Symbol("quote".into()), from_tokens(tokens)?].into()),
+        Some(Token::Quasi) => Ok(list![Exp::Symbol("quasi".into()), from_tokens(tokens)?].into()),
         Some(Token::Unquote) => {
-            Ok(list!["unquote".to_string().into(), from_tokens(tokens)?].into())
+            Ok(list![Exp::Symbol("unquote".into()), from_tokens(tokens)?].into())
         }
         Some(Token::Vopen) => {
             let mut v = Vec::new();
@@ -139,9 +139,7 @@ fn from_tokens(tokens: &mut Peekable<TokenIter>) -> TinResult<Exp> {
             tokens.next();
             let lst: List = v.into();
 
-            Ok(Exp::List(
-                lst.cons(Exp::Atom(Atom::Symbol("make-vector".into()))),
-            ))
+            Ok(Exp::List(lst.cons(Exp::Symbol("make-vector".into()))))
         }
         Some(Token::Popen) => {
             let mut v = Vec::new();
@@ -170,35 +168,33 @@ fn from_tokens(tokens: &mut Peekable<TokenIter>) -> TinResult<Exp> {
             tokens.next();
 
             let lst: List = v.into();
-            Ok(Exp::List(
-                lst.cons(Exp::Atom(Atom::Symbol("make-hash".into()))),
-            ))
+            Ok(Exp::List(lst.cons(Exp::Symbol("make-hash".into()))))
         }
         Some(Token::Mclose) => Err(TinError::SyntaxError("Unexpected '}'".to_string())),
         Some(Token::Vclose) => Err(TinError::SyntaxError("Unexpected ']'".to_string())),
         Some(Token::Pclose) => Err(TinError::SyntaxError("Unexpected ')'".to_string())),
-        Some(Token::Atom(a)) => Ok(Exp::Atom(atom(a))),
+        Some(Token::Atom(a)) => Ok(atom(a)),
         Some(Token::String(s)) => Ok(Exp::String(s)),
     }
 }
 
-fn atom(token: String) -> Atom {
+fn atom(token: String) -> Exp {
     if let Ok(r) = token.parse::<i64>() {
-        return Atom::Number(Number::Int(r));
+        return Exp::Number(Number::Int(r));
     }
 
     if let Ok(r) = token.parse::<f64>() {
-        return Atom::Number(Number::Float(r));
+        return Exp::Number(Number::Float(r));
     }
 
     match token.as_ref() {
-        "#t" => return Atom::Bool(true),
-        "#f" => return Atom::Bool(false),
+        "#t" => return Exp::Bool(true),
+        "#f" => return Exp::Bool(false),
         _ => (),
     }
 
     if token.len() == 2 && token.starts_with("\\") {
-        return Atom::Char(token.chars().nth(1).unwrap());
+        return Exp::Char(token.chars().nth(1).unwrap());
     }
 
     if token.starts_with("#b") {
@@ -208,10 +204,10 @@ fn atom(token: String) -> Atom {
             match c {
                 '1' => acc = acc * 2 + 1,
                 '0' => acc = acc * 2,
-                _ => return Atom::Symbol(token.into()),
+                _ => return Exp::Symbol(token.into()),
             }
         }
-        return Atom::Number(Number::Int(acc));
+        return Exp::Number(Number::Int(acc));
     }
 
     if token.starts_with("#o") {
@@ -220,10 +216,10 @@ fn atom(token: String) -> Atom {
         for c in chrs.chars() {
             match c {
                 '0'..='7' => acc = acc * 8 + c.to_digit(8).unwrap(),
-                _ => return Atom::Symbol(token.into()),
+                _ => return Exp::Symbol(token.into()),
             }
         }
-        return Atom::Number(Number::Int(acc as i64));
+        return Exp::Number(Number::Int(acc as i64));
     }
 
     if token.starts_with("#x") {
@@ -232,13 +228,13 @@ fn atom(token: String) -> Atom {
         for c in chrs.chars() {
             match c {
                 '0'..='9' | 'a'..='f' => acc = acc * 16 + c.to_digit(16).unwrap(),
-                _ => return Atom::Symbol(token.into()),
+                _ => return Exp::Symbol(token.into()),
             }
         }
-        return Atom::Number(Number::Int(acc as i64));
+        return Exp::Number(Number::Int(acc as i64));
     }
 
-    Atom::Symbol(token.into())
+    Exp::Symbol(token.into())
 }
 
 pub fn parse(program: &str) -> TinResult<Exp> {
@@ -249,19 +245,19 @@ pub fn parse(program: &str) -> TinResult<Exp> {
 fn parse_test() {
     let prog = "(begin (define r 10) (* pi (* r r)))";
     // let expect = Exp::List(list![
-    //     Exp::Atom(Atom::Symbol("begin".to_string())),
+    //     Exp(Atom::Symbol("begin".to_string())),
     //     Exp::List(list![
-    //         Exp::Atom(Atom::Symbol("define".to_string())),
-    //         Exp::Atom(Atom::Symbol("r".to_string())),
-    //         Exp::Atom(Atom::Number(Number::Int(10))),
+    //         Exp(Atom::Symbol("define".to_string())),
+    //         Exp(Atom::Symbol("r".to_string())),
+    //         Exp(Atom::Number(Number::Int(10))),
     //     ]),
     //     Exp::List(list![
-    //         Exp::Atom(Atom::Symbol("*".to_string())),
-    //         Exp::Atom(Atom::Symbol("pi".to_string())),
+    //         Exp(Atom::Symbol("*".to_string())),
+    //         Exp(Atom::Symbol("pi".to_string())),
     //         Exp::List(vec![
-    //             Exp::Atom(Atom::Symbol("*".to_string())),
-    //             Exp::Atom(Atom::Symbol("r".to_string())),
-    //             Exp::Atom(Atom::Symbol("r".to_string())),
+    //             Exp(Atom::Symbol("*".to_string())),
+    //             Exp(Atom::Symbol("r".to_string())),
+    //             Exp(Atom::Symbol("r".to_string())),
     //         ]),
     //     ]),
     // ]);

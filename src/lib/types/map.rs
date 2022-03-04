@@ -15,11 +15,11 @@ pub enum Key {
 impl From<Key> for Exp {
     fn from(k: Key) -> Self {
         match k {
-            Key::Int(i) => Exp::Atom(Atom::Number(Number::Int(i))),
+            Key::Int(i) => Exp::Number(Number::Int(i)),
             Key::String(s) => Exp::String(s),
-            Key::Bool(b) => Exp::Atom(Atom::Bool(b)),
-            Key::Symbol(s) => Exp::Atom(Atom::Symbol(s)),
-            Key::Char(s) => Exp::Atom(Atom::Char(s)),
+            Key::Bool(b) => Exp::Bool(b),
+            Key::Symbol(s) => Exp::Symbol(s),
+            Key::Char(s) => Exp::Char(s),
         }
     }
 }
@@ -29,11 +29,11 @@ impl TryFrom<Exp> for Key {
 
     fn try_from(value: Exp) -> Result<Self, Self::Error> {
         match value {
-            Exp::Atom(Atom::Number(Number::Int(n))) => Ok(Key::Int(n)),
+            Exp::Number(Number::Int(n)) => Ok(Key::Int(n)),
             Exp::String(s) => Ok(Key::String(s)),
-            Exp::Atom(Atom::Bool(b)) => Ok(Key::Bool(b)),
-            Exp::Atom(Atom::Symbol(s)) => Ok(Key::Symbol(s.into())),
-            Exp::Atom(Atom::Char(s)) => Ok(Key::Char(s)),
+            Exp::Bool(b) => Ok(Key::Bool(b)),
+            Exp::Symbol(s) => Ok(Key::Symbol(s.into())),
+            Exp::Char(s) => Ok(Key::Char(s)),
             _ => Err(TinError::TypeMismatch(
                 "Hashable".to_string(),
                 value.to_string(),
