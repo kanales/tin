@@ -1,8 +1,8 @@
 use std::convert::{TryFrom, TryInto};
 
 use crate::lib::types::{
-    Atom, Closure, EnvironmentRef, Evaluable, Exp, Key, List, Macro, Map, Number, Proc, Symbol,
-    TinError, TinResult,
+    Closure, EnvironmentRef, Evaluable, Exp, Key, List, Macro, Map, Number, Proc, Symbol, TinError,
+    TinResult,
 };
 use persistent::list;
 use TinError::{ArityMismatch, NotAProcedure};
@@ -167,7 +167,7 @@ fn lambda(env: EnvironmentRef, params: List, body: Exp) -> TinResult<Exp> {
 }
 
 fn defmacro(env: EnvironmentRef, name: Symbol, params: List, rule: Exp) -> TinResult<()> {
-    let m = Macro::new(params, rule)?;
+    let m = Macro::new(env.clone(), params, rule)?;
     define(env, name, m.into())
 }
 
@@ -308,16 +308,11 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, args: List) -> TinResult<Exp> {
             let (def, args) = args.snoc().unwrap();
             let val = args.head().unwrap();
 
-            if let Exp::Symbol(sym) = def {
-                let exp = eval(env.clone(), val.clone())?;
-                env.borrow_mut().update(sym.clone().into(), exp.clone());
-                Ok(exp)
-            } else {
-                Err(TinError::TypeMismatch(
-                    "Symbol".to_string(),
-                    format!("{}", def),
-                ))
-            }
+            let sym: Symbol = def.clone().try_into()?;
+
+            let exp = eval(env.clone(), val.clone())?;
+            env.borrow_mut().update(sym.clone().into(), exp.clone());
+            Ok(exp)
         }
         "print" => {
             if args.len() != 1 {
@@ -339,14 +334,8 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, args: List) -> TinResult<Exp> {
             }
             let (params, args) = args.snoc().unwrap();
             let (body, _) = args.snoc().unwrap();
-            if let Exp::List(params) = params {
-                lambda(env, params.clone(), body.clone())
-            } else {
-                Err(TinError::TypeMismatch(
-                    "List".to_string(),
-                    format!("{}", body),
-                ))
-            }
+            let params: List = params.clone().try_into()?;
+            lambda(env, params.clone(), body.clone())
         }
         "gensym" => {
             if !args.is_empty() {

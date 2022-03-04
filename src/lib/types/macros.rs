@@ -1,8 +1,5 @@
-use super::{Atom, EnvironmentRef, Exp, List, Symbol, TinError, TinResult};
-use std::{
-    convert::{TryFrom, TryInto},
-    env::args,
-};
+use super::{EnvironmentRef, Exp, List, Symbol, TinError, TinResult};
+use std::convert::{TryFrom, TryInto};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Pattern {
@@ -35,19 +32,21 @@ impl TryFrom<Exp> for Pattern {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Macro {
+    env: EnvironmentRef,
     params: List,
     arity: usize,
     rule: Box<Exp>,
 }
 
 impl Macro {
-    pub fn new(params: List, rule: Exp) -> TinResult<Self> {
+    pub fn new(env: EnvironmentRef, params: List, rule: Exp) -> TinResult<Self> {
         let arity = params.len();
         let params: List = params
             .iter()
             .map(|p| Ok(Symbol::try_from(p.clone())?.into()))
             .collect::<TinResult<_>>()?;
         Ok(Macro {
+            env,
             params,
             arity,
             rule: Box::new(rule),
@@ -57,26 +56,18 @@ impl Macro {
         if args.len() != self.arity {
             return Err(TinError::ArityMismatch(self.arity, args.len()));
         }
-        let params = self.params.clone();
+        let _params = self.params.clone();
 
-        let mut res: Exp = *self.rule.clone();
+        let res: Exp = *self.rule.clone();
         Ok(res)
     }
 }
 
-fn expand_rule(rule: Exp, params: List, args: &[Exp]) -> TinResult<Exp> {
-    // match rule {
-    //     Exp::List(mut lst) => {
-    //         lst = lst
-    //             .iter()
-    //             .map(|el| expand_rule(el.clone(), params, args))
-    //             .collect::<TinResult<_>>()?;
-    //         Ok(lst.into())
-    //     }
-    //     Exp::Quasi() => {}
-    // }
-    //
+fn expand_rule(env: EnvironmentRef, rule: Exp, params: List, args: &[Exp]) -> TinResult<Exp> {
     unimplemented!()
+    // match rule {
+    //     Exp::Quasi(exp) => match exp {},
+    // }
 }
 
 impl From<Macro> for Exp {

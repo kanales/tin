@@ -1,7 +1,10 @@
+use persistent::list;
+
 use crate::lib::procs;
-use crate::lib::types::{Atom, Closure, Exp, List, Number, Symbol, TinError};
+use crate::lib::types::{Closure, Exp, List, Number, Symbol, TinError};
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::hash_map::HashMap;
+use std::convert::{Into, TryInto};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Environment {
@@ -86,6 +89,7 @@ impl Environment {
                 Exp::List(lst) => Ok((lst.len() as i64).into()),
                 Exp::Vector(v) => Ok((v.len() as i64).into()),
                 Exp::Map(m) => Ok(m.len().into()),
+                Exp::String(s) => Ok(s.len().into()),
                 _ => Err(TinError::TypeMismatch("list | vector | hash".to_string(), args[0].to_string()))
              }
             }),
@@ -126,7 +130,35 @@ impl Environment {
                     } else {
                         false
                     })).into())
+            }),
+            "car" => Closure::new(|args| {
+                if args.len() != 1 {
+                    return Err(TinError::ArityMismatch(1, args.len()))
+                }
+                let lst: List = args[0].clone().try_into()?;
+
+                 lst.head()
+                     .map(|x| x.clone())
+                     .ok_or(TinError::TypeMismatch("pair".to_string(),Exp::List(lst).to_string()))
+            }),
+            "cdr" => Closure::new(|args| {
+                if args.len() != 1 {
+                    return Err(TinError::ArityMismatch(1, args.len()))
+                }
+                let lst: List = args[0].clone().try_into()?;
+
+                 Ok(lst.tail().into())
+            }),
+            "cons" => Closure::new(|args| {
+                if args.len() != 2 {
+                    return Err(TinError::ArityMismatch(1, args.len()))
+                }
+                let head = args[0].clone();
+                let tail: List = args[1].clone().try_into()?;
+
+                 Ok(tail.cons(head).into())
             })
+
 
         };
         Environment {

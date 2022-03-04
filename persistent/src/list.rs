@@ -1,3 +1,4 @@
+use std::convert::{From, Into};
 use std::{iter::FromIterator, rc::Rc};
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Ord, Eq)]
@@ -76,6 +77,10 @@ struct Node<T> {
 
 pub struct Iter<'a, T> {
     next: Option<&'a Node<T>>,
+}
+
+pub struct IntoIter<T> {
+    value: Option<Rc<Node<T>>>,
 }
 
 impl<'a, T> Iterator for Iter<'a, T> {
@@ -175,6 +180,14 @@ mod test {
 
     #[test]
     fn macro_constructor() {
+        let expect = List::new().cons(1).cons(2).cons(3);
+        let got = list![3, 2, 1];
+
+        assert_eq!(expect, got)
+    }
+
+    #[test]
+    fn into_vec() {
         let expect = List::new().cons(1).cons(2).cons(3);
         let got = list![3, 2, 1];
 

@@ -20,7 +20,11 @@ impl From<f64> for Number {
         Number::Float(x)
     }
 }
-
+impl From<usize> for Number {
+    fn from(x: usize) -> Self {
+        Number::Int(x as i64)
+    }
+}
 impl TryFrom<Exp> for Number {
     type Error = TinError;
     fn try_from(value: Exp) -> Result<Self, Self::Error> {
