@@ -6,6 +6,7 @@ pub mod macros;
 pub mod parser;
 pub mod procs;
 pub mod types;
+pub mod utils;
 
 use crate::lib::eval::eval;
 use crate::lib::parser::parse;

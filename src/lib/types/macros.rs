@@ -1,3 +1,5 @@
+use persistent::list;
+
 use super::{EnvironmentRef, Evaluable, Exp, List, Symbol, TinError, TinResult};
 use std::convert::{TryFrom, TryInto};
 
@@ -32,13 +34,13 @@ impl TryFrom<Exp> for Pattern {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Macro {
-    params: Vec<Symbol>,
+    params: list::List<Symbol>,
     body: Box<Exp>,
     env: EnvironmentRef,
 }
 
 impl Macro {
-    pub fn new(env: EnvironmentRef, params: Vec<Symbol>, rule: Exp) -> Self {
+    pub fn new(env: EnvironmentRef, params: list::List<Symbol>, rule: Exp) -> Self {
         Macro {
             params,
             body: Box::new(rule),
@@ -48,8 +50,8 @@ impl Macro {
 }
 
 impl Evaluable for Macro {
-    fn eval(&self, args: &[Exp]) -> TinResult<Exp> {
-        let env = EnvironmentRef::from(&self.params, args, self.env.clone());
+    fn eval(&self, args: List) -> TinResult<Exp> {
+        let env = EnvironmentRef::from(self.params.clone(), args, self.env.clone());
         crate::lib::eval(env, *self.body.clone())
     }
 }

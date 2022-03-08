@@ -1,9 +1,9 @@
 use std::convert::{TryFrom, TryInto};
 
-use crate::lib::types::{
+use crate::lib::{types::{
     Closure, EnvironmentRef, Evaluable, Exp, Key, List, Macro, Map, Number, Proc, Symbol, TinError,
     TinResult,
-};
+}, utils};
 use persistent::list;
 use TinError::{ArityMismatch, NotAProcedure};
 
@@ -115,8 +115,8 @@ fn as_vec(lst: List) -> Vec<Exp> {
 fn eval_list(env: EnvironmentRef, op: Exp, args: List) -> TinResult<Exp> {
     match op {
         Exp::Macro(m) => {
-            let args: Vec<_> = args.iter().map(|x| x.clone()).collect();
-            eval(env, m.eval(&args)?)
+            let args: List = args.iter().map(|x| x.clone()).collect();
+            eval(env, m.eval(args)?)
         }
         Exp::Symbol(s) => eval_symbol(env, s, args),
         op => {
@@ -125,8 +125,8 @@ fn eval_list(env: EnvironmentRef, op: Exp, args: List) -> TinResult<Exp> {
                 .map(|a| eval(env.clone(), a.clone()))
                 .collect::<TinResult<_>>()?;
             match op {
-                Exp::Proc(p) => p.eval(&as_vec(args)),
-                Exp::Closure(p) => p.eval(&as_vec(args)),
+                Exp::Proc(p) => p.eval(args),
+                Exp::Closure(p) => p.eval(args),
                 Exp::Vector(v) => eval_vector(env, v, args),
                 Exp::Map(m) => eval_map(env, m, args),
                 x => {
@@ -150,7 +150,7 @@ fn eval_rustproc() {
     let env = EnvironmentRef::new();
     env.borrow_mut().insert(
         "foo".into(),
-        Closure::new(|args| match (args[0].clone(), args[1].clone()) {
+        Closure::new(|args| match utils::list2(args)? {
             (Exp::Number(x), Exp::Number(y)) => Ok((x + y).into()),
             _ => unreachable!(),
         }),
@@ -176,7 +176,7 @@ fn lambda(env: EnvironmentRef, params: List, body: Exp) -> TinResult<Exp> {
             Exp::Symbol(x) => Ok(x.clone()),
             x => Err(TinError::NotASymbol(x.clone())),
         })
-        .collect::<TinResult<Vec<_>>>()?;
+        .collect::<TinResult<_>>()?;
     Ok(Exp::Proc(Proc::new(
         params,
         body,
@@ -185,7 +185,7 @@ fn lambda(env: EnvironmentRef, params: List, body: Exp) -> TinResult<Exp> {
 }
 
 fn defmacro(env: EnvironmentRef, name: Symbol, params: List, rule: Exp) -> TinResult<()> {
-    let parms: Vec<Symbol> = params
+    let parms = params
         .iter()
         .map(|p| p.clone().try_into())
         .collect::<TinResult<_>>()?;

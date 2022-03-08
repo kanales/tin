@@ -1,7 +1,7 @@
 use persistent::list;
 
-use crate::lib::procs;
 use crate::lib::types::{Closure, Exp, List, Number, Symbol, TinError};
+use crate::lib::{procs, utils};
 use std::cell::{Ref, RefCell, RefMut};
 use std::collections::hash_map::HashMap;
 use std::convert::{Into, TryInto};
@@ -38,7 +38,7 @@ impl EnvironmentRef {
         }
     }
 
-    pub fn from(params: &[Symbol], args: &[Exp], outer: EnvironmentRef) -> Self {
+    pub fn from(params: persistent::list::List<Symbol>, args: List, outer: EnvironmentRef) -> Self {
         EnvironmentRef {
             env: Rc::new(RefCell::new(Environment::from(params, args, outer))),
         }
@@ -80,18 +80,15 @@ impl Environment {
             "not" => Closure::new(|_| unimplemented!()),
             "eq?" => Closure::new(procs::eq ),
             "len" => Closure::new(|args| {
-              if args.len() != 1 {
-                 return Err(TinError::ArityMismatch(1, args.len()));
-             }
-             match &args[0] {
+             match utils::list1(args)? {
                 Exp::List(lst) => Ok((lst.len() as i64).into()),
                 Exp::Vector(v) => Ok((v.len() as i64).into()),
                 Exp::Map(m) => Ok(m.len().into()),
                 Exp::String(s) => Ok(s.len().into()),
-                _ => Err(TinError::TypeMismatch("list | vector | hash".to_string(), args[0].to_string()))
+                x => Err(TinError::TypeMismatch("list | vector | hash".to_string(), x.to_string()))
              }
             }),
-            "list" => Closure::new(|args| Ok(Exp::List(List::from(args.to_vec())))),
+            "list" => Closure::new(|args| Ok(Exp::List(List::from(args)))),
             "max" => Closure::new(procs::max),
             "min" => Closure::new(procs::min),
             "map" => Closure::new(|args| {
@@ -102,54 +99,42 @@ impl Environment {
 
             }),
             "null?" => Closure::new(|args| {
-                if args.len() == 1 {
-                    if let Exp::List(x) = &args[0] {
-                        return Ok((x.len() == 0).into())
-                    }
+                if let Exp::List(x) = utils::list1(args)? {
+                    Ok((x.len() == 0).into())
+                } else {
+                    Ok(false.into())
                 }
-                Ok(false.into())
             }),
             "number?" => Closure::new(|args| {
-                if args.len() == 1 {
-                    if let Exp::Number(_) = &args[0] {
-                        return Ok(true.into())
-                    }
+                if let Exp::Number(_) = utils::list1(args)? {
+                    return Ok(true.into())
+                } else {
+                    Ok(false.into())
                 }
-                Ok(false.into())
             }),
             "round" => Closure::new(|args| {
-                if args.len() == 1 {
-                    match  Number::try_from(args[0].clone())? {
-                        Number::Int(x) => Ok(x.into()),
-                        Number::Float(f) => Ok(Number::Int(f.round() as i64).into())
-                    }
-                } else {
-                    Err(TinError::ArityMismatch(1, args.len()))
+                let arg = utils::list1(args)?;
+                match  Number::try_from(arg)? {
+                    Number::Int(x) => Ok(x.into()),
+                    Number::Float(f) => Ok(Number::Int(f.round() as i64).into())
                 }
             }),
             "symbol?" => Closure::new(|args| {
-                Ok((args.len() == 0 && (
-                    if let Exp::Symbol(_) = args[0] {
-                        true
-                    } else {
-                        false
-                    })).into())
+                let arg = utils::list1(args)?;
+                match arg {
+                    Exp::Symbol(_) => Ok(true.into()),
+                    _ => Ok(false.into())
+                }
             }),
             "car" => Closure::new(|args| {
-                if args.len() != 1 {
-                    return Err(TinError::ArityMismatch(1, args.len()))
-                }
-                let lst: List = args[0].clone().try_into()?;
+                let lst: List = utils::list1(args)?.try_into()?;
 
                  lst.head()
                      .map(|x| x.clone())
                      .ok_or(TinError::TypeMismatch("pair".to_string(),Exp::List(lst).to_string()))
             }),
             "cdr" => Closure::new(|args| {
-                if args.len() != 1 {
-                    return Err(TinError::ArityMismatch(1, args.len()))
-                }
-                let lst: List = args[0].clone().try_into()?;
+                let lst: List = utils::list1(args)?.try_into()?;
 
                  Ok(lst.tail().into())
             }),
@@ -157,8 +142,8 @@ impl Environment {
                 if args.len() != 2 {
                     return Err(TinError::ArityMismatch(1, args.len()))
                 }
-                let head = args[0].clone();
-                let tail: List = args[1].clone().try_into()?;
+                let (head, tail) = utils::list2(args)?;
+                let tail: List = tail.try_into()?;
 
                  Ok(tail.cons(head).into())
             }),
@@ -175,14 +160,19 @@ impl Environment {
         }
     }
 
-    pub fn from(params: &[Symbol], args: &[Exp], outer: EnvironmentRef) -> Self {
-        if params.len() != args.len() {
-            panic!("Mismatched length creating Environment");
-        }
+    pub fn from(params: persistent::list::List<Symbol>, args: List, outer: EnvironmentRef) -> Self {
         let mut this = Environment::new();
 
-        for (i, a) in args.into_iter().enumerate() {
-            this.env.insert(params[i].clone().into(), a.clone());
+        let mut params = params.iter();
+        let mut args = args.iter();
+        loop {
+            match (params.next(), args.next()) {
+                (Some(p), Some(a)) => {
+                    this.env.insert(p.clone().into(), a.clone());
+                }
+                (None, None) => break,
+                _ => panic!("Mismatched length creating Environment"),
+            }
         }
 
         this.outer = Some(Box::new(outer.clone()));
@@ -214,8 +204,8 @@ impl Environment {
 fn env_test() {
     let env = EnvironmentRef::new();
     let inner = EnvironmentRef::from(
-        &vec!["x".into()],
-        &vec![Exp::Symbol("x".into())],
+        vec!["x".into()].into_iter().collect(),
+        vec![Exp::Symbol("x".into())].into_iter().collect(),
         env.clone(),
     );
     env.borrow_mut().insert("y".into(), Exp::Symbol("y".into()));
