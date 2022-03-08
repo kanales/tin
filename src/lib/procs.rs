@@ -36,6 +36,23 @@ pub fn mul(args: &[Exp]) -> TinResult<Exp> {
     Ok(Exp::Number(acc))
 }
 
+pub fn min(args: &[Exp]) -> TinResult<Exp> {
+    let mut acc = Number::Float(f64::MAX);
+    for el in args {
+        let el = el.try_into()?;
+        acc = if el < acc { el } else { acc };
+    }
+    Ok(Exp::Number(acc))
+}
+pub fn max(args: &[Exp]) -> TinResult<Exp> {
+    let mut acc = Number::Float(f64::MIN);
+    for el in args {
+        let el = el.try_into()?;
+        acc = if el > acc { el } else { acc };
+    }
+    Ok(Exp::Number(acc))
+}
+
 pub fn div(args: &[Exp]) -> TinResult<Exp> {
     let mut acc = if args.len() < 1 {
         return Err(TinError::ArityMismatch(1, 0));

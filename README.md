@@ -22,7 +22,7 @@ Tin is a lisp implemented in rust.
 - [x] Vectors
     - [ ] standard hash vector functions
 - [ ] Standard "functional programming functions"
-- [ ] macros
+- [x] macros
 
 ## Differences with Scheme 
 
@@ -52,6 +52,17 @@ value space. Therefore, both `hash` and `vector` values can be evaluated on its 
 1
 > (['a 'b 'c] 2) ; vectors are 0-indexed *this might change in the future*
 b 
+```
+
+
+### Macros 
+
+Macros in Tin are defined using the `defmacro` function: 
+
+```lisp
+(defmacro defn (name args body) 
+    `(define ,name (lambda ,args ,body)))
+(defn plus-1 (x) (+ 1 x))
 ```
 
 

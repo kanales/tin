@@ -20,6 +20,8 @@ pub struct EnvironmentRef {
     env: Rc<RefCell<Environment>>,
 }
 
+use std::f64;
+
 impl EnvironmentRef {
     pub fn new() -> Self {
         EnvironmentRef {
@@ -76,10 +78,6 @@ impl Environment {
             "<=" => Closure::new(procs::le),
             "=" => Closure::new(procs::eq),
             "not" => Closure::new(|_| unimplemented!()),
-            "append" => Closure::new(|_| unimplemented!()),
-            "car" => Closure::new(|_| unimplemented!()),
-            "cdr" => Closure::new(|_| unimplemented!()),
-            "cons" => Closure::new(|_| unimplemented!()),
             "eq?" => Closure::new(procs::eq ),
             "len" => Closure::new(|args| {
               if args.len() != 1 {
@@ -94,9 +92,15 @@ impl Environment {
              }
             }),
             "list" => Closure::new(|args| Ok(Exp::List(List::from(args.to_vec())))),
-            "max" => Closure::new(|_| unimplemented!()),
-            "map" => Closure::new(|_| unimplemented!()),
-            "min" => Closure::new(|_| unimplemented!()),
+            "max" => Closure::new(procs::max),
+            "min" => Closure::new(procs::min),
+            "map" => Closure::new(|args| {
+                if args.len() != 2 {
+                    return Err(TinError::ArityMismatch(2, args.len()));
+                }
+                unimplemented!()
+
+            }),
             "null?" => Closure::new(|args| {
                 if args.len() == 1 {
                     if let Exp::List(x) = &args[0] {
@@ -157,9 +161,12 @@ impl Environment {
                 let tail: List = args[1].clone().try_into()?;
 
                  Ok(tail.cons(head).into())
-            })
-
-
+            }),
+            "pi" => Exp::Number(f64::consts::PI.into()),
+            "inf" => Exp::Number(f64::INFINITY.into()),
+            "-inf" => Exp::Number(f64::NEG_INFINITY.into()),
+            "float-max" => Exp::Number(f64::MAX.into()),
+            "float-min" => Exp::Number(f64::MIN.into())
         };
         Environment {
             env,

@@ -3,10 +3,16 @@ use crate::lib::types::TinError;
 use std::convert::{From, TryFrom};
 use std::ops::{Add, Div, Mul, Sub};
 
-#[derive(Debug, PartialEq, Clone, Copy, PartialOrd)]
+#[derive(Debug, Clone, Copy)]
 pub enum Number {
     Int(i64),
     Float(f64),
+}
+
+impl From<i32> for Number {
+    fn from(x: i32) -> Self {
+        Number::Int(x as i64)
+    }
 }
 
 impl From<i64> for Number {
@@ -15,6 +21,11 @@ impl From<i64> for Number {
     }
 }
 
+impl From<f32> for Number {
+    fn from(x: f32) -> Self {
+        Number::Float(x as f64)
+    }
+}
 impl From<f64> for Number {
     fn from(x: f64) -> Self {
         Number::Float(x)
@@ -115,6 +126,28 @@ impl Number {
         match self {
             Number::Int(n) => Number::Int(if *n < 0 { -n } else { *n }),
             Number::Float(n) => Number::Float(if *n < 0.0 { -n } else { *n }),
+        }
+    }
+}
+
+impl PartialEq for Number {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Number::Float(x), Number::Float(y)) => x == y,
+            (Number::Int(x), Number::Int(y)) => x == y,
+            (Number::Float(x), Number::Int(y)) => (x.floor() == *x) && (*x as i64) == *y,
+            (Number::Int(x), Number::Float(y)) => (y.floor() == *y) && (*y as i64) == *x,
+        }
+    }
+}
+
+impl PartialOrd for Number {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match (self, other) {
+            (Number::Float(x), Number::Float(y)) => x.partial_cmp(y),
+            (Number::Int(x), Number::Int(y)) => x.partial_cmp(y),
+            (Number::Float(x), Number::Int(y)) => x.partial_cmp(x as &f64),
+            (Number::Int(x), Number::Float(y)) => y.partial_cmp(y as &f64),
         }
     }
 }

@@ -1,4 +1,4 @@
-use super::{EnvironmentRef, Exp, List, Symbol, TinError, TinResult};
+use super::{EnvironmentRef, Evaluable, Exp, List, Symbol, TinError, TinResult};
 use std::convert::{TryFrom, TryInto};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -32,44 +32,27 @@ impl TryFrom<Exp> for Pattern {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Macro {
+    params: Vec<Symbol>,
+    body: Box<Exp>,
     env: EnvironmentRef,
-    params: List,
-    arity: usize,
-    rule: Box<Exp>,
 }
 
 impl Macro {
-    pub fn new(env: EnvironmentRef, params: List, rule: Exp) -> TinResult<Self> {
-        let arity = params.len();
-        let params: List = params
-            .iter()
-            .map(|p| Ok(Symbol::try_from(p.clone())?.into()))
-            .collect::<TinResult<_>>()?;
-        Ok(Macro {
-            env,
+    pub fn new(env: EnvironmentRef, params: Vec<Symbol>, rule: Exp) -> Self {
+        Macro {
             params,
-            arity,
-            rule: Box::new(rule),
-        })
-    }
-    pub fn expand(&self, args: &[Exp]) -> TinResult<Exp> {
-        if args.len() != self.arity {
-            return Err(TinError::ArityMismatch(self.arity, args.len()));
+            body: Box::new(rule),
+            env,
         }
-        let _params = self.params.clone();
-
-        let res: Exp = *self.rule.clone();
-        Ok(res)
     }
 }
 
-fn expand_rule(env: EnvironmentRef, rule: Exp, params: List, args: &[Exp]) -> TinResult<Exp> {
-    unimplemented!()
-    // match rule {
-    //     Exp::Quasi(exp) => match exp {},
-    // }
+impl Evaluable for Macro {
+    fn eval(&self, args: &[Exp]) -> TinResult<Exp> {
+        let env = EnvironmentRef::from(&self.params, args, self.env.clone());
+        crate::lib::eval(env, *self.body.clone())
+    }
 }
-
 impl From<Macro> for Exp {
     fn from(m: Macro) -> Self {
         Exp::Macro(m)

@@ -14,9 +14,6 @@ pub enum Exp {
     Macro(Macro),
     Proc(Proc),
     Closure(Closure),
-
-    Quasi(Box<Exp>),
-    UnQuote(Box<Exp>),
 }
 
 impl From<Symbol> for Exp {
@@ -132,12 +129,6 @@ impl fmt::Display for Exp {
                     write!(f, "{} ", exp)?;
                 }
                 write!(f, ")")
-            }
-            Exp::Quasi(exp) => {
-                write!(f, "`{}", exp)
-            }
-            Exp::UnQuote(exp) => {
-                write!(f, ",{}", exp)
             }
         }
     }
