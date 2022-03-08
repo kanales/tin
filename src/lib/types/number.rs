@@ -146,8 +146,8 @@ impl PartialOrd for Number {
         match (self, other) {
             (Number::Float(x), Number::Float(y)) => x.partial_cmp(y),
             (Number::Int(x), Number::Int(y)) => x.partial_cmp(y),
-            (Number::Float(x), Number::Int(y)) => x.partial_cmp(x as &f64),
-            (Number::Int(x), Number::Float(y)) => y.partial_cmp(y as &f64),
+            (Number::Float(x), Number::Int(y)) => x.partial_cmp(&(*y as f64)),
+            (Number::Int(x), Number::Float(y)) => (*x as f64).partial_cmp(y),
         }
     }
 }

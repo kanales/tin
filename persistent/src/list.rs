@@ -79,10 +79,6 @@ pub struct Iter<'a, T> {
     next: Option<&'a Node<T>>,
 }
 
-pub struct IntoIter<T> {
-    value: Option<Rc<Node<T>>>,
-}
-
 impl<'a, T> Iterator for Iter<'a, T> {
     type Item = &'a T;
 
