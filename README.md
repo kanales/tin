@@ -1,6 +1,5 @@
 # Tin
 
-
 <a
    style="display: block;
   margin-left: auto;
@@ -13,7 +12,19 @@
          src="https://upload.wikimedia.org/wikipedia/commons/thumb/a/a8/Empty_tin_can2009-01-19.jpg/256px-Empty_tin_can2009-01-19.jpg">
 </a>
 
-Tin is a lisp implemented in rust. 
+Tin is a lisp implemented in rust. 🚨 **Warning** 🚨 Currently `tin` is not close
+to being ready for running in production. Expect bugs and a subpar UX (for now).
+
+## Installation
+
+Currently it can only be run from source. Assuming you have `rlwrap` installed,
+build the rust project,
+
+```sh
+$ cargo build --release
+```
+
+and execute it by running `./tin`.
 
 ## Features
 
