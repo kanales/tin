@@ -1,0 +1,2 @@
+#!/bin/sh
+rlwrap -pyellow -om -M .scm target/release/tin

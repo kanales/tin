@@ -71,16 +71,12 @@ fn eval_vector(env: EnvironmentRef, v: Vec<Exp>, args: List) -> TinResult<Exp> {
     }
 }
 
-fn eval_map(env: EnvironmentRef, m: Map, args: List) -> TinResult<Exp> {
-    if args.len() == 1 {
-        let key: Key = eval(env.clone(), args.head().unwrap().clone())?.try_into()?;
-        if !m.includes(&key) {
-            return Err(TinError::KeyNotFound(key));
-        }
-        return Ok(m[&key].clone());
-    } else {
-        Err(TinError::ArityMismatch(1, args.len()))
+fn eval_map(_env: EnvironmentRef, m: Map, args: List) -> TinResult<Exp> {
+    let key: Key = utils::list1(args)?.clone().try_into()?;
+    if !m.includes(&key) {
+        return Err(TinError::KeyNotFound(key));
     }
+    return Ok(m[&key].clone());
 }
 
 fn eval_unqote(env: EnvironmentRef, lst: List) -> TinResult<Exp> {
