@@ -114,6 +114,8 @@ fn eval_list(env: EnvironmentRef, op: Exp, args: List) -> TinResult<Exp> {
             eval(env, m.eval(args)?)
         }
         Exp::Symbol(s) => eval_symbol(env, s, args),
+        Exp::List(lst) => eval_list(env.clone(), eval(env, lst.into())?, args),
+        Exp::Number(_) | Exp::Char(_) | Exp::Bool(_) => Err(TinError::NotCallable(op)),
         op => {
             let args: List = args
                 .iter()
@@ -124,16 +126,7 @@ fn eval_list(env: EnvironmentRef, op: Exp, args: List) -> TinResult<Exp> {
                 Exp::Closure(p) => p.eval(args),
                 Exp::Vector(v) => eval_vector(env, v, args),
                 Exp::Map(m) => eval_map(env, m, args),
-                x => {
-                    let res = eval(env.clone(), x)?;
-                    match res {
-                        Exp::Symbol(s) => eval_symbol(env, s, args),
-                        Exp::Number(_) | Exp::Char(_) | Exp::Bool(_) => {
-                            Err(TinError::NotCallable(res))
-                        }
-                        x => eval_list(env, x, args),
-                    }
-                }
+                _ => unreachable!(),
             }
         }
     }
@@ -413,32 +406,6 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, args: List) -> TinResult<Exp> {
             )?;
 
             eval_list(env, head, args)
-
-            // match head {
-            //     Exp::Proc(proc) => {
-            //         let args: Vec<_> = args
-            //             .iter()
-            //             .map(|a| eval(env.clone(), a.clone()))
-            //             .collect::<TinResult<_>>()?;
-            //         proc.eval(&args)
-            //     }
-            //     Exp::Closure(proc) => {
-            //         let args: Vec<_> = args
-            //             .iter()
-            //             .map(|a| eval(env.clone(), a.clone()))
-            //             .collect::<TinResult<_>>()?;
-            //         proc.eval(&args)
-            //     }
-            //     Exp::Macro(m) => {
-            //         let vals: Vec<Exp> = args.into();
-
-            //         println!("Eval macro... (2)");
-            //         eval(env, m.expand(&vals)?)
-            //     }
-            //     Exp::Vector(v) => eval_vector(env, v, args),
-            //     Exp::Map(m) => eval_map(env, m, args),
-            //     _ => Err(TinError::NotAProcedure(head)),
-            // }
         }
     }
 }
