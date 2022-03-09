@@ -1,6 +1,9 @@
 mod environment;
 use crate::lib::eval::eval;
-use std::convert::From;
+use std::{
+    convert::{From, TryFrom},
+    fmt::Display,
+};
 
 mod atom;
 mod exp;
@@ -25,8 +28,8 @@ type Got = String;
 #[derive(Debug, Clone, PartialEq)]
 pub enum TinError {
     SyntaxError(String),
-    TypeMismatch(Expect, Got),
-    NotAProcedure(Exp),
+    TypeMismatch(Vec<String>, Got),
+    NotCallable(Exp),
     NotASymbol(Exp),
     ArityMismatch(usize, usize),
     Undefined(Symbol),
@@ -34,6 +37,29 @@ pub enum TinError {
     OutOfRange(usize),
     UnpairedDefinition,
     Null,
+}
+
+impl Display for TinError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TinError::SyntaxError(e) => write!(f, "SyntaxError '{}'", e),
+            TinError::TypeMismatch(exp, got) => {
+                write!(f, "Expected [{}], got {}", exp.join(", "), got)
+            }
+            TinError::NotCallable(e) => {
+                write!(f, "Attempted to call '{}'", e)
+            }
+            TinError::NotASymbol(e) => write!(f, "Not a symbol '{}'", e),
+            TinError::Undefined(s) => write!(f, "Unbound symbol '{}'", s),
+            TinError::ArityMismatch(e, g) => {
+                write!(f, "Expected {} arguments, found {}", e, g)
+            }
+            TinError::OutOfRange(i) => write!(f, "Index {} is out of range", i),
+            TinError::KeyNotFound(k) => write!(f, "Missing key '{}'", k),
+            TinError::UnpairedDefinition => write!(f, "Mismatching assignments"),
+            TinError::Null => unreachable!(),
+        }
+    }
 }
 
 pub type TinResult<R> = Result<R, TinError>;
@@ -60,7 +86,7 @@ impl Proc {
             env,
         }
     }
-    pub fn new_va(params: list::List<Symbol>, va: Symbol, body: Exp,env: EnvironmentRef) -> Self {
+    pub fn new_va(params: list::List<Symbol>, va: Symbol, body: Exp, env: EnvironmentRef) -> Self {
         Proc {
             params,
             body: Box::new(body),
@@ -68,7 +94,6 @@ impl Proc {
             env,
         }
     }
-
 }
 
 impl Evaluable for Proc {
@@ -140,4 +165,31 @@ fn test_va() {
     assert_eq!(Ok(list!(2.into(), 3.into()).into()), eval(env, exp));
 }
 
+pub enum Function {
+    Proc(Proc),
+    Closure(Closure),
+}
+
+impl Evaluable for Function {
+    fn eval(&self, args: List) -> TinResult<Exp> {
+        match self {
+            Function::Proc(p) => p.eval(args),
+            Function::Closure(c) => c.eval(args),
+        }
+    }
+}
+
+impl TryFrom<Exp> for Function {
+    type Error = TinError;
+    fn try_from(value: Exp) -> Result<Self, Self::Error> {
+        match value {
+            Exp::Closure(c) => Ok(Function::Closure(c)),
+            Exp::Proc(c) => Ok(Function::Proc(c)),
+            _ => Err(TinError::TypeMismatch(
+                vec!["function".to_string()],
+                value.to_string(),
+            )),
+        }
+    }
+}
 //pub use macros::Macro;

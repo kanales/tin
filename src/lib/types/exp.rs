@@ -1,4 +1,4 @@
-use crate::lib::types::{Atom, Closure, List, Macro, Map, Number, Proc, Symbol};
+use crate::lib::types::{Closure, List, Macro, Map, Number, Proc, Symbol};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Exp {
@@ -15,6 +15,20 @@ pub enum Exp {
     Macro(Macro),
     Proc(Proc),
     Closure(Closure),
+}
+
+impl TryFrom<Exp> for bool {
+    type Error = TinError;
+
+    fn try_from(value: Exp) -> Result<Self, Self::Error> {
+        match value {
+            Exp::Bool(b) => Ok(b),
+            _ => Err(TinError::TypeMismatch(
+                vec!["bool".to_string()],
+                value.to_string(),
+            )),
+        }
+    }
 }
 
 impl From<Symbol> for Exp {
@@ -37,7 +51,7 @@ impl TryFrom<Exp> for Vec<Exp> {
         }
 
         return Err(TinError::TypeMismatch(
-            "vector".to_string(),
+            vec!["vector".to_string()],
             value.to_string(),
         ));
     }
@@ -58,7 +72,7 @@ where
         }
 
         return Err(TinError::TypeMismatch(
-            "vector".to_string(),
+            vec!["vector".to_string()],
             value.to_string(),
         ));
     }
@@ -125,7 +139,7 @@ impl fmt::Display for Exp {
                 write!(f, "]")
             }
             Exp::DotList(lst, e) => {
-                  write!(f, "( ")?;
+                write!(f, "( ")?;
                 for exp in lst.iter() {
                     write!(f, "{} ", exp)?;
                 }
@@ -147,7 +161,7 @@ impl TryFrom<Exp> for List {
     fn try_from(e: Exp) -> Result<Self, Self::Error> {
         match e {
             Exp::List(lst) => Ok(lst),
-            x => Err(TinError::TypeMismatch("list".into(), x.to_string())),
+            x => Err(TinError::TypeMismatch(vec!["list".into()], x.to_string())),
         }
     }
 }

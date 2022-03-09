@@ -8,14 +8,14 @@ use crate::lib::{
     utils,
 };
 use persistent::list;
-use TinError::{ArityMismatch, NotAProcedure};
+use TinError::{ArityMismatch, NotCallable};
 
 pub fn eval(env: EnvironmentRef, x: Exp) -> TinResult<Exp> {
     match x {
         Exp::Symbol(s) => env.borrow().get(&s).ok_or(TinError::Undefined(s.into())),
         Exp::List(lst) => match lst.snoc() {
             Some((head, tail)) => eval_list(env, head.clone(), tail),
-            _ => Err(NotAProcedure(Exp::List(List::new()))),
+            _ => Err(NotCallable(Exp::List(List::new()))),
         },
         _ => Ok(x),
     }
@@ -133,7 +133,7 @@ fn eval_list(env: EnvironmentRef, op: Exp, args: List) -> TinResult<Exp> {
                     match res {
                         Exp::Symbol(s) => eval_symbol(env, s, args),
                         Exp::Number(_) | Exp::Char(_) | Exp::Bool(_) => {
-                            Err(TinError::NotAProcedure(res))
+                            Err(TinError::NotCallable(res))
                         }
                         x => eval_list(env, x, args),
                     }
@@ -264,7 +264,12 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, args: List) -> TinResult<Exp> {
                     }
                     out
                 }
-                x => return Err(TinError::TypeMismatch("vector".to_string(), x.to_string())),
+                x => {
+                    return Err(TinError::TypeMismatch(
+                        vec!["vector".to_string()],
+                        x.to_string(),
+                    ))
+                }
             };
 
             if v.len() % 2 != 0 {
@@ -379,7 +384,7 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, args: List) -> TinResult<Exp> {
                 Exp::List(lst) => lambda(env, lst.clone(), body.clone()),
                 Exp::DotList(lst, va) => lambda_va(env, lst.clone(), *va.clone(), body.clone()),
                 _ => Err(TinError::TypeMismatch(
-                    "list".to_string(),
+                    vec!["list".to_string()],
                     params.to_string(),
                 )),
             }

@@ -19,6 +19,7 @@ enum Token {
     String(String),
 }
 
+#[derive(Debug)]
 enum State {
     Initial,
     MatchingAtom(Vec<char>), // could be Symbol or Number
@@ -48,28 +49,35 @@ impl<'a> Iterator for TokenIter<'a> {
                 '`' => Some(Token::Quasi),
                 ',' => Some(Token::Unquote),
                 '.' => Some(Token::Dot),
-                ' ' => self.next(),
                 '"' => {
                     self.state = State::MatchingString(Vec::new());
                     self.next()
                 }
+                x if x.is_whitespace() => self.next(),
                 x => {
                     self.state = State::MatchingAtom(vec![x]);
                     self.next()
                 }
             },
-            State::MatchingAtom(mut curr) => match self.input.peek()? {
-                '(' | '[' | ')' | ']' | '\'' | ' ' | '"' => {
-                    self.state = State::Initial;
-                    Some(Token::Atom(curr.into_iter().collect()))
+            State::MatchingAtom(mut curr) => {
+                if let Some(c) = self.input.peek() {
+                    match c {
+                        '(' | ')' | '[' | ']' | ',' | '\'' | '"' => {
+                            self.state = State::Initial;
+                            return Some(Token::Atom(curr.into_iter().collect()));
+                        }
+                        x if x.is_whitespace() => {
+                            self.state = State::Initial;
+                            return Some(Token::Atom(curr.into_iter().collect()));
+                        }
+                        _ => {}
+                    }
                 }
-                _ => {
-                    let x = self.input.next()?;
-                    curr.push(x);
-                    self.state = State::MatchingAtom(curr);
-                    self.next()
-                }
-            },
+                let x = self.input.next()?;
+                curr.push(x);
+                self.state = State::MatchingAtom(curr);
+                self.next()
+            }
             State::MatchingString(mut curr) => match self.input.next()? {
                 '"' => {
                     self.state = State::Initial;

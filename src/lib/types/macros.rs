@@ -1,8 +1,8 @@
 use persistent::list;
 
-use super::{EnvironmentRef, Environment, Evaluable, Exp, List, Symbol, TinError, TinResult};
-use std::convert::{TryFrom, TryInto};
+use super::{Environment, EnvironmentRef, Evaluable, Exp, List, Symbol, TinError, TinResult};
 use crate::lib::eval;
+use std::convert::{TryFrom, TryInto};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Pattern {
@@ -26,7 +26,7 @@ impl TryFrom<Exp> for Pattern {
             Exp::Symbol(sym) => Ok(Pattern::Symbol(sym)),
             Exp::List(lst) => lst.try_into(),
             _ => Err(TinError::TypeMismatch(
-                "Symbol | List".into(),
+                vec!["symbol".into(), "list".into()],
                 value.to_string(),
             )),
         }
@@ -54,7 +54,7 @@ impl Macro {
 
 impl Evaluable for Macro {
     fn eval(&self, args: List) -> TinResult<Exp> {
-   let argc = args.len();
+        let argc = args.len();
         let plen = self.params.len();
         if argc < plen {
             return Err(TinError::ArityMismatch(plen, argc));
@@ -89,7 +89,7 @@ impl TryFrom<Exp> for Macro {
             return Ok(m);
         }
         Err(TinError::TypeMismatch(
-            "macro".to_string(),
+            vec!["macro".to_string()],
             value.to_string(),
         ))
     }

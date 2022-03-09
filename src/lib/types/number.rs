@@ -1,4 +1,4 @@
-use super::{Atom, Exp};
+use super::Exp;
 use crate::lib::types::TinError;
 use std::convert::{From, TryFrom};
 use std::ops::{Add, Div, Mul, Sub};
@@ -42,7 +42,7 @@ impl TryFrom<Exp> for Number {
         match value {
             Exp::Number(n) => Ok(n),
             _ => Err(TinError::TypeMismatch(
-                "number".to_string(),
+                vec!["number".to_string()],
                 format!("{:?}", value),
             )),
         }
@@ -55,7 +55,7 @@ impl TryFrom<&Exp> for Number {
         match value {
             Exp::Number(n) => Ok(*n),
             _ => Err(TinError::TypeMismatch(
-                "number".to_string(),
+                vec!["number".to_string()],
                 format!("{:?}", value),
             )),
         }

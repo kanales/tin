@@ -1,6 +1,7 @@
 use crate::lib::types::{Atom, Exp, Number, TinError, TinResult};
 use std::collections::hash_map::HashMap;
 use std::convert::{From, TryFrom, TryInto};
+use std::fmt::Display;
 
 use super::Symbol;
 
@@ -24,6 +25,18 @@ impl From<Key> for Exp {
     }
 }
 
+impl Display for Key {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Key::Int(i) => write!(f, "{}", i),
+            Key::Bool(i) => write!(f, "{}", i),
+            Key::Symbol(i) => write!(f, "{}", i),
+            Key::Char(i) => write!(f, "{}", i),
+            Key::String(i) => write!(f, "{}", i),
+        }
+    }
+}
+
 impl TryFrom<Exp> for Key {
     type Error = TinError;
 
@@ -35,7 +48,13 @@ impl TryFrom<Exp> for Key {
             Exp::Symbol(s) => Ok(Key::Symbol(s.into())),
             Exp::Char(s) => Ok(Key::Char(s)),
             _ => Err(TinError::TypeMismatch(
-                "Hashable".to_string(),
+                vec![
+                    "number".to_string(),
+                    "string".to_string(),
+                    "bool".to_string(),
+                    "symbol".to_string(),
+                    "char".to_string(),
+                ],
                 value.to_string(),
             )),
         }

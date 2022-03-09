@@ -22,6 +22,8 @@ pub struct EnvironmentRef {
 
 use std::f64;
 
+use super::{Evaluable, Function};
+
 impl EnvironmentRef {
     pub fn new() -> Self {
         EnvironmentRef {
@@ -86,7 +88,11 @@ impl Environment {
                 Exp::Vector(v) => Ok((v.len() as i64).into()),
                 Exp::Map(m) => Ok(m.len().into()),
                 Exp::String(s) => Ok(s.len().into()),
-                x => Err(TinError::TypeMismatch("list | vector | hash".to_string(), x.to_string()))
+                x => Err(TinError::TypeMismatch(vec![
+                    "list".into(),
+                    "vector".into(),
+                    "hash".into()
+                ], x.to_string()))
              }
             }),
             "list" => Closure::new(|args| Ok(Exp::List(List::from(args)))),
@@ -132,7 +138,7 @@ impl Environment {
 
                  lst.head()
                      .map(|x| x.clone())
-                     .ok_or(TinError::TypeMismatch("pair".to_string(),Exp::List(lst).to_string()))
+                     .ok_or(TinError::TypeMismatch(vec!["list".to_string()],Exp::List(lst).to_string()))
             }),
             "cdr" => Closure::new(|args| {
                 let lst: List = utils::list1(args)?.try_into()?;
@@ -152,7 +158,43 @@ impl Environment {
             "inf" => Exp::Number(f64::INFINITY.into()),
             "-inf" => Exp::Number(f64::NEG_INFINITY.into()),
             "float-max" => Exp::Number(f64::MAX.into()),
-            "float-min" => Exp::Number(f64::MIN.into())
+            "float-min" => Exp::Number(f64::MIN.into()),
+
+            "fold" => Closure::new(|args| {
+                let (f, init, lst) = utils::list3(args)?;
+                let f: Function = f.try_into()?;
+                let lst: List = lst.try_into()?;
+                let mut init = init;
+                for el in lst.iter() {
+                    init = f.eval(list!(init, el.clone()))?
+                }
+                Ok(init)
+            }),
+            "map" => Closure::new(|args| {
+                let (f , lst) = utils::list2(args)?;
+                let f: Function = f.try_into()?;
+                let lst: List = lst.try_into()?;
+                let mut acc = Vec::new();
+                for el in lst.iter() {
+                    acc.push(  f.eval(list!(el.clone()))?)
+                }
+                Ok(Exp::List(acc.into()))
+
+            }),
+            "filter" => Closure::new(|args| {
+                let (f , lst) = utils::list2(args)?;
+                let f: Function = f.try_into()?;
+                let lst: List = lst.try_into()?;
+                let mut acc = Vec::new();
+                for el in lst.iter() {
+                    let flag: bool = f.eval(list!(el.clone()))?.try_into()?;
+                    if flag {
+                       acc.push(el.clone())
+                    }
+                }
+                Ok(Exp::List(acc.into()))
+
+            })
         };
         Environment {
             env,

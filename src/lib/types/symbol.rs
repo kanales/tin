@@ -1,4 +1,4 @@
-use super::{Atom, Exp, TinError};
+use super::{Exp, TinError};
 use std::{
     convert::{AsRef, From, TryFrom},
     fmt::Display,
@@ -42,7 +42,10 @@ impl TryFrom<Exp> for Symbol {
     fn try_from(value: Exp) -> Result<Self, Self::Error> {
         match value {
             Exp::Symbol(s) => Ok(s),
-            _ => Err(TinError::TypeMismatch("symbol".into(), value.to_string())),
+            _ => Err(TinError::TypeMismatch(
+                vec!["symbol".into()],
+                value.to_string(),
+            )),
         }
     }
 }
