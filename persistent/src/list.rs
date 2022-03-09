@@ -25,6 +25,10 @@ impl<T> List<T> {
         List { head: None }
     }
 
+    pub fn singleton(el: T) -> Self {
+        Self::new().cons(el)
+    }
+
     pub fn is_empty(&self) -> bool {
         self.head.is_none()
     }

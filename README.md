@@ -23,6 +23,7 @@ Tin is a lisp implemented in rust.
     - [ ] standard hash vector functions
 - [ ] Standard "functional programming functions"
 - [x] macros
+- [x] variadic arguments
 
 ## Differences with Scheme 
 

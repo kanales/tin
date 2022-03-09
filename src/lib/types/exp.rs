@@ -7,6 +7,7 @@ pub enum Exp {
     Bool(bool),
     Char(char),
 
+    DotList(List, Box<Exp>),
     List(List),
     Vector(Vec<Exp>),
     String(String),
@@ -122,6 +123,13 @@ impl fmt::Display for Exp {
                     write!(f, "{} ", exp)?;
                 }
                 write!(f, "]")
+            }
+            Exp::DotList(lst, e) => {
+                  write!(f, "( ")?;
+                for exp in lst.iter() {
+                    write!(f, "{} ", exp)?;
+                }
+                write!(f, ". {} )", e)
             }
             Exp::List(l) => {
                 write!(f, "( ")?;

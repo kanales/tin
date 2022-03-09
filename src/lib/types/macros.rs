@@ -1,7 +1,8 @@
 use persistent::list;
 
-use super::{EnvironmentRef, Evaluable, Exp, List, Symbol, TinError, TinResult};
+use super::{EnvironmentRef, Environment, Evaluable, Exp, List, Symbol, TinError, TinResult};
 use std::convert::{TryFrom, TryInto};
+use crate::lib::eval;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Pattern {
@@ -36,6 +37,7 @@ impl TryFrom<Exp> for Pattern {
 pub struct Macro {
     params: list::List<Symbol>,
     body: Box<Exp>,
+    va: Option<Symbol>,
     env: EnvironmentRef,
 }
 
@@ -43,6 +45,7 @@ impl Macro {
     pub fn new(env: EnvironmentRef, params: list::List<Symbol>, rule: Exp) -> Self {
         Macro {
             params,
+            va: None,
             body: Box::new(rule),
             env,
         }
@@ -51,8 +54,25 @@ impl Macro {
 
 impl Evaluable for Macro {
     fn eval(&self, args: List) -> TinResult<Exp> {
-        let env = EnvironmentRef::from(self.params.clone(), args, self.env.clone());
-        crate::lib::eval(env, *self.body.clone())
+   let argc = args.len();
+        let plen = self.params.len();
+        if argc < plen {
+            return Err(TinError::ArityMismatch(plen, argc));
+        }
+        let mut env = Environment::from(self.env.clone());
+        let mut it = args;
+        for p in self.params.iter() {
+            env.insert(p.clone(), it.head().unwrap().clone());
+            it = it.tail();
+        }
+
+        match (self.va.as_ref(), it.len()) {
+            (None, 0) => {}
+            (None, _) => return Err(TinError::ArityMismatch(plen, argc)),
+            (Some(x), _) => env.insert(x.clone(), it.into()),
+        }
+
+        eval(env.as_ref(), *self.body.clone())
     }
 }
 impl From<Macro> for Exp {

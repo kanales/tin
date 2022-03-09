@@ -1,9 +1,12 @@
 use std::convert::{TryFrom, TryInto};
 
-use crate::lib::{types::{
-    Closure, EnvironmentRef, Evaluable, Exp, Key, List, Macro, Map, Number, Proc, Symbol, TinError,
-    TinResult,
-}, utils};
+use crate::lib::{
+    types::{
+        Closure, EnvironmentRef, Evaluable, Exp, Key, List, Macro, Map, Number, Proc, Symbol,
+        TinError, TinResult,
+    },
+    utils,
+};
 use persistent::list;
 use TinError::{ArityMismatch, NotAProcedure};
 
@@ -108,10 +111,6 @@ fn eval_quasi(env: EnvironmentRef, exp: Exp) -> TinResult<Exp> {
         x => Ok(x),
     }
 }
-fn as_vec(lst: List) -> Vec<Exp> {
-    lst.into()
-}
-
 fn eval_list(env: EnvironmentRef, op: Exp, args: List) -> TinResult<Exp> {
     match op {
         Exp::Macro(m) => {
@@ -169,8 +168,8 @@ fn define(env: EnvironmentRef, s: Symbol, body: Exp) -> TinResult<()> {
     Ok(())
 }
 
-fn lambda(env: EnvironmentRef, params: List, body: Exp) -> TinResult<Exp> {
-    let params = params
+fn lambda(env: EnvironmentRef, pars: List, body: Exp) -> TinResult<Exp> {
+    let params = pars
         .iter()
         .map(|x| match x {
             Exp::Symbol(x) => Ok(x.clone()),
@@ -179,6 +178,23 @@ fn lambda(env: EnvironmentRef, params: List, body: Exp) -> TinResult<Exp> {
         .collect::<TinResult<_>>()?;
     Ok(Exp::Proc(Proc::new(
         params,
+        body,
+        env.clone(), // TODO check
+    )))
+}
+
+fn lambda_va(env: EnvironmentRef, pars: List, va: Exp, body: Exp) -> TinResult<Exp> {
+    let params = pars
+        .iter()
+        .map(|x| match x {
+            Exp::Symbol(x) => Ok(x.clone()),
+            x => Err(TinError::NotASymbol(x.clone())),
+        })
+        .collect::<TinResult<_>>()?;
+    let va = va.try_into()?;
+    Ok(Exp::Proc(Proc::new_va(
+        params,
+        va,
         body,
         env.clone(), // TODO check
     )))
@@ -295,6 +311,17 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, args: List) -> TinResult<Exp> {
 
                     Ok(Exp::List(List::new()))
                 }
+                Exp::DotList(lst, va) => match lst.snoc() {
+                    None => Err(TinError::Null),
+                    Some((def, args)) => {
+                        let body = lambda_va(env.clone(), args, *va.clone(), body)?;
+                        let def = def.clone().try_into()?;
+                        define(env, def, body)?;
+
+                        Ok(Exp::List(List::new()))
+                    }
+                },
+
                 Exp::List(lst) => match lst.snoc() {
                     None => Err(TinError::Null),
                     Some((def, args)) => {
@@ -348,8 +375,14 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, args: List) -> TinResult<Exp> {
             }
             let (params, args) = args.snoc().unwrap();
             let (body, _) = args.snoc().unwrap();
-            let params: List = params.clone().try_into()?;
-            lambda(env, params.clone(), body.clone())
+            match params {
+                Exp::List(lst) => lambda(env, lst.clone(), body.clone()),
+                Exp::DotList(lst, va) => lambda_va(env, lst.clone(), *va.clone(), body.clone()),
+                _ => Err(TinError::TypeMismatch(
+                    "list".to_string(),
+                    params.to_string(),
+                )),
+            }
         }
         "gensym" => {
             if !args.is_empty() {

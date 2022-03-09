@@ -38,11 +38,12 @@ impl EnvironmentRef {
         }
     }
 
-    pub fn from(params: persistent::list::List<Symbol>, args: List, outer: EnvironmentRef) -> Self {
+    pub fn from(outer: EnvironmentRef) -> Self {
         EnvironmentRef {
-            env: Rc::new(RefCell::new(Environment::from(params, args, outer))),
+            env: Rc::new(RefCell::new(Environment::from(outer))),
         }
     }
+
     pub fn borrow_mut(&self) -> RefMut<Environment> {
         self.env.borrow_mut()
     }
@@ -160,21 +161,8 @@ impl Environment {
         }
     }
 
-    pub fn from(params: persistent::list::List<Symbol>, args: List, outer: EnvironmentRef) -> Self {
+    pub fn from(outer: EnvironmentRef) -> Self {
         let mut this = Environment::new();
-
-        let mut params = params.iter();
-        let mut args = args.iter();
-        loop {
-            match (params.next(), args.next()) {
-                (Some(p), Some(a)) => {
-                    this.env.insert(p.clone().into(), a.clone());
-                }
-                (None, None) => break,
-                _ => panic!("Mismatched length creating Environment"),
-            }
-        }
-
         this.outer = Some(Box::new(outer.clone()));
         this
     }
@@ -198,17 +186,10 @@ impl Environment {
             self.outer.as_ref().unwrap().borrow_mut().update(k, v)
         }
     }
-}
 
-#[test]
-fn env_test() {
-    let env = EnvironmentRef::new();
-    let inner = EnvironmentRef::from(
-        vec!["x".into()].into_iter().collect(),
-        vec![Exp::Symbol("x".into())].into_iter().collect(),
-        env.clone(),
-    );
-    env.borrow_mut().insert("y".into(), Exp::Symbol("y".into()));
-    let res = inner.borrow().get(&"y".into()).unwrap();
-    assert_eq!(res, Exp::Symbol("y".into()))
+    pub fn as_ref(self) -> EnvironmentRef {
+        EnvironmentRef {
+            env: Rc::new(RefCell::new(self)),
+        }
+    }
 }

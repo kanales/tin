@@ -14,6 +14,7 @@ enum Token {
     Quote,
     Quasi,
     Unquote,
+    Dot,
     Atom(String),
     String(String),
 }
@@ -46,6 +47,7 @@ impl<'a> Iterator for TokenIter<'a> {
                 '\'' => Some(Token::Quote),
                 '`' => Some(Token::Quasi),
                 ',' => Some(Token::Unquote),
+                '.' => Some(Token::Dot),
                 ' ' => self.next(),
                 '"' => {
                     self.state = State::MatchingString(Vec::new());
@@ -145,8 +147,17 @@ fn from_tokens(tokens: &mut Peekable<TokenIter>) -> TinResult<Exp> {
             let mut v = Vec::new();
             loop {
                 if let Some(c) = tokens.peek() {
-                    if *c == Token::Pclose {
-                        break;
+                    match *c {
+                        Token::Dot => {
+                            tokens.next();
+                            let tok = from_tokens(tokens)?;
+                            if tokens.next() != Some(Token::Pclose) {
+                                return Err(TinError::SyntaxError("missing ')'".to_owned()));
+                            }
+                            return Ok(Exp::DotList(v.into(), Box::new(tok)));
+                        }
+                        Token::Pclose => break,
+                        _ => {}
                     }
                 }
                 v.push(from_tokens(tokens)?);
@@ -170,6 +181,7 @@ fn from_tokens(tokens: &mut Peekable<TokenIter>) -> TinResult<Exp> {
             let lst: List = v.into();
             Ok(Exp::List(lst.cons(Exp::Symbol("make-hash".into()))))
         }
+        Some(Token::Dot) => Err(TinError::SyntaxError("Unexpected '.'".to_string())),
         Some(Token::Mclose) => Err(TinError::SyntaxError("Unexpected '}'".to_string())),
         Some(Token::Vclose) => Err(TinError::SyntaxError("Unexpected ']'".to_string())),
         Some(Token::Pclose) => Err(TinError::SyntaxError("Unexpected ')'".to_string())),
