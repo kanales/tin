@@ -129,7 +129,7 @@ impl Environment {
             "symbol?" => Closure::new(|args| {
                 let arg = utils::list1(args)?;
                 match arg {
-                    Exp::Symbol(_) => Ok(true.into()),
+                    Exp::Ident(_) => Ok(true.into()),
                     _ => Ok(false.into())
                 }
             }),

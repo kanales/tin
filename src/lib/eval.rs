@@ -12,46 +12,13 @@ use TinError::{ArityMismatch, NotCallable};
 
 pub fn eval(env: EnvironmentRef, x: Exp) -> TinResult<Exp> {
     match x {
-        Exp::Symbol(s) => env.borrow().get(&s).ok_or(TinError::Undefined(s.into())),
+        Exp::Ident(s) => env.borrow().get(&s).ok_or(TinError::Undefined(s.into())),
         Exp::List(lst) => match lst.snoc() {
             Some((head, tail)) => eval_list(env, head.clone(), tail),
             _ => Err(NotCallable(Exp::List(List::new()))),
         },
         _ => Ok(x),
     }
-}
-
-#[test]
-fn eval_simple_test() {
-    use crate::lib::parser::parse;
-    let env = EnvironmentRef::default();
-    let input = parse("( + 1 2 3 )").unwrap();
-    assert_eq!(Ok(Exp::Number(Number::Int(6))), eval(env.clone(), input))
-}
-
-#[test]
-fn eval_define_test() {
-    use crate::lib::parser::parse;
-    let env = EnvironmentRef::default();
-    eval(env.clone(), parse("( define x 3 )").unwrap()).unwrap();
-    println!("env: {:?}", env);
-    let input = parse("( + x 4 )").unwrap();
-
-    assert_eq!(Ok(Exp::Number(Number::Int(7))), eval(env, input));
-}
-
-#[test]
-fn eval_rec_test() {
-    use crate::lib::parser::parse;
-    let env = EnvironmentRef::default();
-
-    eval(
-        env.clone(),
-        parse("( define fact (lambda (x) (if (< x 2) 1 ( * x ( fact ( - x 1 ) ) ) ) ))").unwrap(),
-    )
-    .unwrap();
-    let input = parse("( fact 5 )").unwrap();
-    assert_eq!(Ok(Exp::Number(Number::Int(120))), eval(env, input));
 }
 
 fn eval_vector(env: EnvironmentRef, v: Vec<Exp>, args: List) -> TinResult<Exp> {
@@ -92,7 +59,7 @@ fn eval_quasi(env: EnvironmentRef, exp: Exp) -> TinResult<Exp> {
     match exp {
         Exp::List(lst) => {
             if let Some((head, rest)) = lst.snoc() {
-                if let Exp::Symbol(s) = head {
+                if let Exp::Ident(s) = head {
                     if s.as_ref() == "unquote" {
                         return eval_unqote(env, rest);
                     }
@@ -113,7 +80,7 @@ fn eval_list(env: EnvironmentRef, op: Exp, args: List) -> TinResult<Exp> {
             let args: List = args.iter().map(|x| x.clone()).collect();
             eval(env, m.eval(args)?)
         }
-        Exp::Symbol(s) => eval_symbol(env, s, args),
+        Exp::Ident(s) => eval_symbol(env, s, args),
         Exp::List(lst) => eval_list(env.clone(), eval(env, lst.into())?, args),
         Exp::Number(_) | Exp::Char(_) | Exp::Bool(_) => Err(TinError::NotCallable(op)),
         op => {
@@ -132,21 +99,6 @@ fn eval_list(env: EnvironmentRef, op: Exp, args: List) -> TinResult<Exp> {
     }
 }
 
-#[test]
-fn eval_rustproc() {
-    use crate::lib::parser::parse;
-    let env = EnvironmentRef::new();
-    env.borrow_mut().insert(
-        "foo".into(),
-        Closure::new(|args| match utils::list2(args)? {
-            (Exp::Number(x), Exp::Number(y)) => Ok((x + y).into()),
-            _ => unreachable!(),
-        }),
-    );
-    let res = eval(env.clone(), parse("(foo 1 2)").unwrap());
-    assert_eq!(Ok(3.into()), res);
-}
-
 fn define(env: EnvironmentRef, s: Symbol, body: Exp) -> TinResult<()> {
     if let Exp::Proc(p) = body {
         env.borrow_mut().insert(s, Exp::Proc(p));
@@ -161,7 +113,7 @@ fn lambda(env: EnvironmentRef, pars: List, body: Exp) -> TinResult<Exp> {
     let params = pars
         .iter()
         .map(|x| match x {
-            Exp::Symbol(x) => Ok(x.clone()),
+            Exp::Ident(x) => Ok(x.clone()),
             x => Err(TinError::NotASymbol(x.clone())),
         })
         .collect::<TinResult<_>>()?;
@@ -176,7 +128,7 @@ fn lambda_va(env: EnvironmentRef, pars: List, va: Exp, body: Exp) -> TinResult<E
     let params = pars
         .iter()
         .map(|x| match x {
-            Exp::Symbol(x) => Ok(x.clone()),
+            Exp::Ident(x) => Ok(x.clone()),
             x => Err(TinError::NotASymbol(x.clone())),
         })
         .collect::<TinResult<_>>()?;
@@ -215,18 +167,17 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, args: List) -> TinResult<Exp> {
                 eval_quasi(env, head)
             }
         }
-        "make-vector" => {
+        "make_vector" => {
             let mut out = Vec::new();
             for arg in args.iter() {
                 out.push(eval(env.clone(), arg.clone())?);
             }
             Ok(Exp::Vector(out))
         }
-        "make-hash" => {
+        "make_hash" => {
             if args.len() % 2 != 0 {
                 return Err(TinError::SyntaxError("Unbalanced map".to_string()));
             }
-
             let mut m = Map::new();
             for c in args.as_vec().chunks(2) {
                 let key = eval(env.clone(), c[0].clone())?;
@@ -244,7 +195,7 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, args: List) -> TinResult<Exp> {
             let v = match args.next().unwrap().clone() {
                 Exp::Vector(v) => v,
                 Exp::List(mut lst) => {
-                    if lst.head() == Some(&Symbol::new("make-vector".to_string()).into()) {
+                    if lst.head() == Some(&Symbol::new("make_vector".to_string()).into()) {
                         lst = lst.tail();
                     }
                     let mut out = Vec::new();
@@ -300,7 +251,7 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, args: List) -> TinResult<Exp> {
             let (body, _) = args.snoc().unwrap();
             let body = body.clone();
             match def {
-                Exp::Symbol(s) => {
+                Exp::Ident(s) => {
                     define(env, s, body)?;
 
                     Ok(Exp::List(List::new()))
@@ -383,7 +334,7 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, args: List) -> TinResult<Exp> {
                 unimplemented!()
             }
 
-            Ok(Exp::Symbol(env.gensym()))
+            Ok(Exp::Ident(env.gensym()))
         }
         "defmacro" => {
             if args.len() != 3 {
@@ -407,5 +358,65 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, args: List) -> TinResult<Exp> {
 
             eval_list(env, head, args)
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::lib::{
+        eval::eval,
+        types::{Closure, Environment, EnvironmentRef, Exp, Number},
+        utils,
+    };
+
+    #[test]
+    fn eval_simple_test() {
+        use crate::lib::parser::parse;
+        let env = Environment::default();
+        let input = parse("( + 1 2 3 )").unwrap();
+        assert_eq!(Ok(Exp::Number(Number::Int(6))), eval(env.as_ref(), input))
+    }
+
+    #[test]
+    fn eval_define_test() {
+        use crate::lib::parser::parse;
+        let env = EnvironmentRef::default();
+        eval(env.clone(), parse("( define x 3 )").unwrap()).unwrap();
+        println!("env: {:?}", env);
+        let input = parse("( + x 4 )").unwrap();
+
+        assert_eq!(Ok(Exp::Number(Number::Int(7))), eval(env, input));
+    }
+
+    #[test]
+    fn eval_rec_test() {
+        use crate::lib::parser::parse;
+        let env = EnvironmentRef::default();
+
+        eval(
+            env.clone(),
+            parse("( define fact (lambda (x) (if (< x 2) 1 ( * x ( fact ( - x 1 ) ) ) ) ))")
+                .unwrap(),
+        )
+        .unwrap();
+        let input = parse("( fact 5 )").unwrap();
+        assert_eq!(Ok(Exp::Number(Number::Int(120))), eval(env, input));
+    }
+
+    #[test]
+    fn eval_rustproc() {
+        use crate::lib::parser::parse;
+        let env = EnvironmentRef::new();
+        env.borrow_mut().insert(
+            "foo".into(),
+            Closure::new(|args| match utils::list2(args)? {
+                (Exp::Number(x), Exp::Number(y)) => Ok((x + y).into()),
+                _ => unreachable!(),
+            }),
+        );
+        let exp = parse("(foo 1 2)").unwrap();
+        println!("{}", exp);
+        let res = eval(env.clone(), exp);
+        assert_eq!(Ok(3.into()), res);
     }
 }

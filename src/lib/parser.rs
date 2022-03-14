@@ -1,7 +1,10 @@
 use crate::lib::types::{Atom, Exp, List, Map, Number, TinError, TinResult};
 use persistent::list;
+use std::ascii::AsciiExt;
 use std::iter::Peekable;
 use std::str::Chars;
+
+use unicode_id::UnicodeID;
 
 #[derive(Debug, PartialEq, Eq)]
 enum Token {
@@ -15,15 +18,26 @@ enum Token {
     Quasi,
     Unquote,
     Dot,
-    Atom(String),
+    Ident(String),
+    Keyword(String),
     String(String),
+    Symbol(char),
+    Int(String),
+    Float(String),
 }
 
 #[derive(Debug)]
 enum State {
-    Initial,
-    MatchingAtom(Vec<char>), // could be Symbol or Number
+    Initial,      //
+    MatchedColon, //
+
+    MatchedSign(char),                //
+    MatchingInteger(char, Vec<char>), //
+    MatchingFloat(char, Vec<char>),   //
+
     MatchingString(Vec<char>),
+    MatchingIdent(Vec<char>),
+    MatchingKeyword(Vec<char>),
 }
 
 struct TokenIter<'a> {
@@ -49,34 +63,90 @@ impl<'a> Iterator for TokenIter<'a> {
                 '`' => Some(Token::Quasi),
                 ',' => Some(Token::Unquote),
                 '.' => Some(Token::Dot),
+                ':' => {
+                    self.state = State::MatchedColon;
+                    self.next()
+                }
                 '"' => {
                     self.state = State::MatchingString(Vec::new());
                     self.next()
                 }
-                x if x.is_whitespace() => self.next(),
-                x => {
-                    self.state = State::MatchingAtom(vec![x]);
+                '+' => {
+                    self.state = State::MatchedSign('+');
                     self.next()
                 }
-            },
-            State::MatchingAtom(mut curr) => {
-                if let Some(c) = self.input.peek() {
-                    match c {
-                        '(' | ')' | '[' | ']' | ',' | '\'' | '"' => {
-                            self.state = State::Initial;
-                            return Some(Token::Atom(curr.into_iter().collect()));
-                        }
-                        x if x.is_whitespace() => {
-                            self.state = State::Initial;
-                            return Some(Token::Atom(curr.into_iter().collect()));
-                        }
-                        _ => {}
+                '-' => {
+                    self.state = State::MatchedSign('-');
+                    self.next()
+                }
+                x if x.is_ascii_digit() => {
+                    self.state = State::MatchingInteger('+', vec![x]);
+                    self.next()
+                }
+                x if x.is_whitespace() => self.next(),
+                x => {
+                    if x.is_id_start() {
+                        self.state = State::MatchingIdent(vec![x]);
+                        self.next()
+                    } else {
+                        self.state = State::Initial;
+                        return Some(Token::Symbol(x));
                     }
                 }
-                let x = self.input.next()?;
-                curr.push(x);
-                self.state = State::MatchingAtom(curr);
-                self.next()
+            },
+            State::MatchedColon => {
+                let c = self.input.next()?;
+                if c.is_id_start() {
+                    self.state = State::MatchingKeyword(vec![c]);
+                    self.next()
+                } else {
+                    return Some(Token::Keyword(c.to_string()));
+                }
+            }
+            State::MatchedSign(s) => {
+                if let Some(c) = self.input.peek() {
+                    if c.is_ascii_digit() {
+                        let c = self.input.next()?;
+                        self.state = State::MatchingInteger(s, vec![c]);
+                        return self.next();
+                    }
+                }
+                self.state = State::Initial;
+                return Some(Token::Symbol(s));
+            }
+            State::MatchingInteger(s, mut v) => {
+                if let Some(c) = self.input.peek() {
+                    if c.is_ascii_digit() {
+                        let c = self.input.next()?;
+                        v.push(c);
+                        self.state = State::MatchingInteger(s, v);
+
+                        return self.next();
+                    }
+                    if *c == '.' {
+                        let c = self.input.next()?;
+                        v.push(c);
+                        self.state = State::MatchingFloat(s, v);
+                        return self.next();
+                    }
+                }
+                self.state = State::Initial;
+                v.insert(0, s);
+                return Some(Token::Int(v.iter().collect()));
+            }
+            State::MatchingFloat(s, mut v) => {
+                if let Some(c) = self.input.peek() {
+                    if c.is_ascii_digit() {
+                        let c = self.input.next()?;
+                        v.push(c);
+                        self.state = State::MatchingFloat(s, v);
+
+                        return self.next();
+                    }
+                }
+                self.state = State::Initial;
+                v.insert(0, s);
+                return Some(Token::Float(v.iter().collect()));
             }
             State::MatchingString(mut curr) => match self.input.next()? {
                 '"' => {
@@ -89,6 +159,30 @@ impl<'a> Iterator for TokenIter<'a> {
                     self.next()
                 }
             },
+            State::MatchingIdent(mut cs) => {
+                if let Some(c) = self.input.peek() {
+                    if UnicodeID::is_id_continue(*c) {
+                        cs.push(self.input.next()?);
+                        self.state = State::MatchingIdent(cs);
+                        return self.next();
+                    }
+                }
+
+                self.state = State::Initial;
+                return Some(Token::Ident(cs.into_iter().collect()));
+            }
+            State::MatchingKeyword(mut cs) => {
+                if let Some(c) = self.input.peek() {
+                    if UnicodeID::is_id_continue(*c) {
+                        cs.push(self.input.next()?);
+                        self.state = State::MatchingKeyword(cs);
+                        return self.next();
+                    }
+                }
+
+                self.state = State::Initial;
+                return Some(Token::Keyword(cs.into_iter().collect()));
+            }
         }
     }
 }
@@ -100,41 +194,13 @@ fn tokenize<'a>(input: &'a str) -> TokenIter<'a> {
     }
 }
 
-#[test]
-fn tokenize_test() {
-    let input = "(begin (define r 10) (* pi (* r r)))";
-    let expect = vec![
-        Token::Popen,
-        Token::Atom("begin".to_string()),
-        Token::Popen,
-        Token::Atom("define".to_string()),
-        Token::Atom("r".to_string()),
-        Token::Atom("10".to_string()),
-        Token::Pclose,
-        Token::Popen,
-        Token::Atom("*".to_string()),
-        Token::Atom("pi".to_string()),
-        Token::Popen,
-        Token::Atom("*".to_string()),
-        Token::Atom("r".to_string()),
-        Token::Atom("r".to_string()),
-        Token::Pclose,
-        Token::Pclose,
-        Token::Pclose,
-    ];
-
-    let res: Vec<_> = tokenize(input).collect();
-
-    assert_eq!(res, expect);
-}
-
 fn from_tokens(tokens: &mut Peekable<TokenIter>) -> TinResult<Exp> {
     match tokens.next() {
         None => Err(TinError::SyntaxError("Unexpected EOF".to_string())),
-        Some(Token::Quote) => Ok(list![Exp::Symbol("quote".into()), from_tokens(tokens)?].into()),
-        Some(Token::Quasi) => Ok(list![Exp::Symbol("quasi".into()), from_tokens(tokens)?].into()),
+        Some(Token::Quote) => Ok(list![Exp::Ident("quote".into()), from_tokens(tokens)?].into()),
+        Some(Token::Quasi) => Ok(list![Exp::Ident("quasi".into()), from_tokens(tokens)?].into()),
         Some(Token::Unquote) => {
-            Ok(list![Exp::Symbol("unquote".into()), from_tokens(tokens)?].into())
+            Ok(list![Exp::Ident("unquote".into()), from_tokens(tokens)?].into())
         }
         Some(Token::Vopen) => {
             let mut v = Vec::new();
@@ -149,7 +215,7 @@ fn from_tokens(tokens: &mut Peekable<TokenIter>) -> TinResult<Exp> {
             tokens.next();
             let lst: List = v.into();
 
-            Ok(Exp::List(lst.cons(Exp::Symbol("make-vector".into()))))
+            Ok(Exp::List(lst.cons(Exp::Ident("make_vector".into()))))
         }
         Some(Token::Popen) => {
             let mut v = Vec::new();
@@ -187,100 +253,123 @@ fn from_tokens(tokens: &mut Peekable<TokenIter>) -> TinResult<Exp> {
             tokens.next();
 
             let lst: List = v.into();
-            Ok(Exp::List(lst.cons(Exp::Symbol("make-hash".into()))))
+            Ok(Exp::List(lst.cons(Exp::Ident("make_hash".into()))))
         }
         Some(Token::Dot) => Err(TinError::SyntaxError("Unexpected '.'".to_string())),
         Some(Token::Mclose) => Err(TinError::SyntaxError("Unexpected '}'".to_string())),
         Some(Token::Vclose) => Err(TinError::SyntaxError("Unexpected ']'".to_string())),
         Some(Token::Pclose) => Err(TinError::SyntaxError("Unexpected ')'".to_string())),
-        Some(Token::Atom(a)) => Ok(atom(a)),
-        Some(Token::String(s)) => Ok(Exp::String(s)),
+        Some(Token::Ident(a)) => Ok(Exp::Ident(a.into())),
+        Some(Token::String(s)) => Ok(Exp::String(s.into())),
+        Some(Token::Symbol(s)) => Ok(Exp::Ident(s.to_string().into())),
+        Some(Token::Int(s)) => match s.parse::<i64>() {
+            Ok(i) => Ok(i.into()),
+            Err(_) => unreachable!("failed to parse int {}", s),
+        },
+        Some(Token::Float(s)) => match s.parse::<f64>() {
+            Ok(i) => Ok(i.into()),
+            Err(_) => unreachable!("failed to parse int {}", s),
+        },
+        Some(Token::Keyword(kw)) => Ok(Exp::Keyword(kw.into())),
     }
-}
-
-fn atom(token: String) -> Exp {
-    if let Ok(r) = token.parse::<i64>() {
-        return Exp::Number(Number::Int(r));
-    }
-
-    if let Ok(r) = token.parse::<f64>() {
-        return Exp::Number(Number::Float(r));
-    }
-
-    match token.as_ref() {
-        "#t" => return Exp::Bool(true),
-        "#f" => return Exp::Bool(false),
-        _ => (),
-    }
-
-    if token.len() == 2 && token.starts_with("\\") {
-        return Exp::Char(token.chars().nth(1).unwrap());
-    }
-
-    if token.starts_with("#b") {
-        let chrs = &token[2..];
-        let mut acc = 0;
-        for c in chrs.chars() {
-            match c {
-                '1' => acc = acc * 2 + 1,
-                '0' => acc = acc * 2,
-                _ => return Exp::Symbol(token.into()),
-            }
-        }
-        return Exp::Number(Number::Int(acc));
-    }
-
-    if token.starts_with("#o") {
-        let chrs = &token[2..];
-        let mut acc = 0;
-        for c in chrs.chars() {
-            match c {
-                '0'..='7' => acc = acc * 8 + c.to_digit(8).unwrap(),
-                _ => return Exp::Symbol(token.into()),
-            }
-        }
-        return Exp::Number(Number::Int(acc as i64));
-    }
-
-    if token.starts_with("#x") {
-        let chrs = &token[2..];
-        let mut acc = 0;
-        for c in chrs.chars() {
-            match c {
-                '0'..='9' | 'a'..='f' => acc = acc * 16 + c.to_digit(16).unwrap(),
-                _ => return Exp::Symbol(token.into()),
-            }
-        }
-        return Exp::Number(Number::Int(acc as i64));
-    }
-
-    Exp::Symbol(token.into())
 }
 
 pub fn parse(program: &str) -> TinResult<Exp> {
     from_tokens(&mut tokenize(program).peekable())
 }
 
-#[test]
-fn parse_test() {
-    let prog = "(begin (define r 10) (* pi (* r r)))";
-    // let expect = Exp::List(list![
-    //     Exp(Atom::Symbol("begin".to_string())),
-    //     Exp::List(list![
-    //         Exp(Atom::Symbol("define".to_string())),
-    //         Exp(Atom::Symbol("r".to_string())),
-    //         Exp(Atom::Number(Number::Int(10))),
-    //     ]),
-    //     Exp::List(list![
-    //         Exp(Atom::Symbol("*".to_string())),
-    //         Exp(Atom::Symbol("pi".to_string())),
-    //         Exp::List(vec![
-    //             Exp(Atom::Symbol("*".to_string())),
-    //             Exp(Atom::Symbol("r".to_string())),
-    //             Exp(Atom::Symbol("r".to_string())),
-    //         ]),
-    //     ]),
-    // ]);
+#[cfg(test)]
+mod test {
+    use persistent::list;
 
-    // assert_eq!(parse(prog), Ok(expect));
+    use crate::lib::{
+        parser::{parse, tokenize, Token},
+        types::{Exp, List},
+    };
+
+    #[test]
+    fn test_keywords() {
+        let input = ":abc";
+        assert_eq!(Ok(Exp::Keyword("abc".into())), parse(input));
+    }
+
+    #[test]
+    fn tokenize_test() {
+        let input = "(begin (define r 10) (* pi (* r r)))";
+        let expect = vec![
+            Token::Popen,
+            Token::Ident("begin".to_string()),
+            Token::Popen,
+            Token::Ident("define".to_string()),
+            Token::Ident("r".to_string()),
+            Token::Int("+10".to_string()),
+            Token::Pclose,
+            Token::Popen,
+            Token::Symbol('*'),
+            Token::Ident("pi".to_string()),
+            Token::Popen,
+            Token::Symbol('*'),
+            Token::Ident("r".to_string()),
+            Token::Ident("r".to_string()),
+            Token::Pclose,
+            Token::Pclose,
+            Token::Pclose,
+        ];
+
+        let res: Vec<_> = tokenize(input).collect();
+
+        assert_eq!(res, expect);
+    }
+    #[test]
+    fn test_parse_form() {
+        // let exp = parse("(foo )");
+        let exp = parse("(foo 2 3.1)");
+        assert_eq!(
+            Ok(Exp::List(list!(
+                Exp::Ident("foo".into()),
+                Exp::Number(2.into()),
+                Exp::Number(3.1.into())
+            ))),
+            exp
+        );
+    }
+
+    #[test]
+    fn test_parse_map() {
+        let map = parse("{ :a 1 :b 2.1 }");
+        assert_eq!(
+            Ok(Exp::List(list!(
+                Exp::Ident("make_hash".into()),
+                Exp::Keyword("a".into()),
+                Exp::Number(1.into()),
+                Exp::Keyword("b".into()),
+                Exp::Number(2.1.into())
+            ))),
+            map
+        );
+    }
+
+    #[test]
+    fn parse_test() {
+        let prog = "(begin (define r 10) (* pi (* r r)))";
+        // let expect = Exp::List(list![
+        //     Exp(Atom::Symbol("begin".to_string())),
+        //     Exp::List(list![
+        //         Exp(Atom::Symbol("define".to_string())),
+        //         Exp(Atom::Symbol("r".to_string())),
+        //         Exp(Atom::Number(Number::Int(10))),
+        //     ]),
+        //     Exp::List(list![
+        //         Exp(Atom::Symbol("*".to_string())),
+        //         Exp(Atom::Symbol("pi".to_string())),
+        //         Exp::List(vec![
+        //             Exp(Atom::Symbol("*".to_string())),
+        //             Exp(Atom::Symbol("r".to_string())),
+        //             Exp(Atom::Symbol("r".to_string())),
+        //         ]),
+        //     ]),
+        // ]);
+
+        // assert_eq!(parse(prog), Ok(expect));
+    }
 }

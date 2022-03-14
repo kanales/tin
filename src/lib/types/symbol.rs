@@ -41,7 +41,7 @@ impl TryFrom<Exp> for Symbol {
 
     fn try_from(value: Exp) -> Result<Self, Self::Error> {
         match value {
-            Exp::Symbol(s) => Ok(s),
+            Exp::Ident(s) => Ok(s),
             _ => Err(TinError::TypeMismatch(
                 vec!["symbol".into()],
                 value.to_string(),

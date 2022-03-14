@@ -11,4 +11,11 @@ name = "tin"
 version = "0.2.0"
 dependencies = [
  "persistent",
+ "unicode-id",
 ]
+
+[[package]]
+name = "unicode-id"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4285d92be83dfbc8950a2601178b89ed36f979ebf51bfcf7b272b17001184e6c"

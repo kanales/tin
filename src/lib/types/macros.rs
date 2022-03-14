@@ -6,7 +6,7 @@ use std::convert::{TryFrom, TryInto};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Pattern {
-    Symbol(Symbol),
+    Ident(Symbol),
     List(List),
 }
 
@@ -23,7 +23,7 @@ impl TryFrom<Exp> for Pattern {
 
     fn try_from(value: Exp) -> Result<Self, Self::Error> {
         match value {
-            Exp::Symbol(sym) => Ok(Pattern::Symbol(sym)),
+            Exp::Ident(sym) => Ok(Pattern::Ident(sym)),
             Exp::List(lst) => lst.try_into(),
             _ => Err(TinError::TypeMismatch(
                 vec!["symbol".into(), "list".into()],

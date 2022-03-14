@@ -1,3 +1,5 @@
+use crate::lib::eval::eval;
+use crate::lib::parser::parse;
 use crate::lib::types::{Atom, Exp, Number, TinError, TinResult};
 use std::collections::hash_map::HashMap;
 use std::convert::{From, TryFrom, TryInto};
@@ -9,7 +11,7 @@ use super::Symbol;
 pub enum Key {
     Int(i64),
     Bool(bool),
-    Symbol(Symbol),
+    Keyword(Symbol),
     Char(char),
     String(String),
 }
@@ -19,7 +21,7 @@ impl From<Key> for Exp {
             Key::Int(i) => Exp::Number(Number::Int(i)),
             Key::String(s) => Exp::String(s),
             Key::Bool(b) => Exp::Bool(b),
-            Key::Symbol(s) => Exp::Symbol(s),
+            Key::Keyword(s) => Exp::Keyword(s),
             Key::Char(s) => Exp::Char(s),
         }
     }
@@ -30,7 +32,7 @@ impl Display for Key {
         match self {
             Key::Int(i) => write!(f, "{}", i),
             Key::Bool(i) => write!(f, "{}", i),
-            Key::Symbol(i) => write!(f, "{}", i),
+            Key::Keyword(i) => write!(f, ":{}", i),
             Key::Char(i) => write!(f, "{}", i),
             Key::String(i) => write!(f, "{}", i),
         }
@@ -45,7 +47,7 @@ impl TryFrom<Exp> for Key {
             Exp::Number(Number::Int(n)) => Ok(Key::Int(n)),
             Exp::String(s) => Ok(Key::String(s)),
             Exp::Bool(b) => Ok(Key::Bool(b)),
-            Exp::Symbol(s) => Ok(Key::Symbol(s.into())),
+            Exp::Keyword(s) => Ok(Key::Keyword(s.into())),
             Exp::Char(s) => Ok(Key::Char(s)),
             _ => Err(TinError::TypeMismatch(
                 vec![
@@ -102,4 +104,11 @@ impl std::ops::Index<&Key> for Map {
     fn index(&self, index: &Key) -> &Self::Output {
         &self.0[index]
     }
+}
+mod test {
+    use crate::lib::{
+        eval::eval,
+        parser::parse,
+        types::{Environment, EnvironmentRef},
+    };
 }

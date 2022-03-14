@@ -7,3 +7,4 @@ edition = "2018"
 
 [dependencies]
 persistent = { path = "persistent" }
+unicode-id = "0.3.0"

@@ -7,6 +7,7 @@ use crate::lib::Tin;
 const PROMPT: &'static str = "λ> ";
 fn main() {
     let mut tin = Tin::new();
+
     eprintln!(
         "{}",
         concat!(

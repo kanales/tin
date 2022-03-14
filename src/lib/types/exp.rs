@@ -2,10 +2,11 @@ use crate::lib::types::{Closure, List, Macro, Map, Number, Proc, Symbol};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Exp {
-    Symbol(Symbol),
+    Ident(Symbol),
     Number(Number),
     Bool(bool),
     Char(char),
+    Keyword(Symbol),
 
     DotList(List, Box<Exp>),
     List(List),
@@ -33,7 +34,7 @@ impl TryFrom<Exp> for bool {
 
 impl From<Symbol> for Exp {
     fn from(x: Symbol) -> Self {
-        Exp::Symbol(x)
+        Exp::Ident(x)
     }
 }
 
@@ -115,7 +116,8 @@ use super::{TinError, TinResult};
 impl fmt::Display for Exp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Exp::Symbol(s) => write!(f, "{}", s),
+            Exp::Ident(s) => write!(f, "{}", s),
+            Exp::Keyword(s) => write!(f, ":{}", s),
             Exp::Number(Number::Int(n)) => write!(f, "{}", n),
             Exp::Number(Number::Float(n)) => write!(f, "{}", n),
             Exp::Bool(b) => write!(f, "{}", b),
