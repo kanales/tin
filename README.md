@@ -50,8 +50,8 @@ in Clojure and other (non lisp) programming languages like Python.
 Tin provides a hash map datatype that can be created by using the `make-hash` function on a
 sequence of key-value pairs, or by using the hash construct `{ ... }`. For example: 
 
-```scheme 
-(define my-map { 'a 1 'b 2 })
+```lisp 
+(define my-map { :a 1 :b 2 })
 ```
 
 ### Index by call 
@@ -60,10 +60,10 @@ In Tin the notion of (hash)map and vector is interpreted as a _mapping_ from the
 value space. Therefore, both `hash` and `vector` values can be evaluated on its indices: 
 
 ```scheme 
-> ({ 'a 1 'b 2 } 'a)
+> ({ :a 1 :b 2 } :a)
 1
-> (['a 'b 'c] 2) ; vectors are 0-indexed *this might change in the future*
-b 
+> ([:a :b :c] 2) ; vectors are 0-indexed *this might change in the future*
+:b 
 ```
 
 
