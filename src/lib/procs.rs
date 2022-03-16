@@ -6,7 +6,7 @@ use super::{types::List, utils};
 
 fn ensure_arity<T>(want: usize, args: &[T]) -> TinResult<()> {
     if args.len() != want {
-        Err(TinError::ArityMismatch(want, args.len()))
+        TinError::ArityMismatch(want, args.len()).into()
     } else {
         Ok(())
     }
@@ -29,7 +29,7 @@ pub fn sub(args: List) -> TinResult<Exp> {
 
             Ok(Exp::Number(acc))
         }
-        _ => Err(TinError::ArityMismatch(1, 0)),
+        _ => TinError::ArityMismatch(1, 0).into(),
     }
 }
 pub fn mul(args: List) -> TinResult<Exp> {
@@ -67,7 +67,7 @@ pub fn div(args: List) -> TinResult<Exp> {
 
             Ok(Exp::Number(acc))
         }
-        _ => Err(TinError::ArityMismatch(1, 0)),
+        _ => TinError::ArityMismatch(1, 0).into(),
     }
 }
 

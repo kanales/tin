@@ -196,7 +196,7 @@ fn tokenize<'a>(input: &'a str) -> TokenIter<'a> {
 
 fn from_tokens(tokens: &mut Peekable<TokenIter>) -> TinResult<Exp> {
     match tokens.next() {
-        None => Err(TinError::SyntaxError("Unexpected EOF".to_string())),
+        None => TinError::SyntaxError("Unexpected EOF".to_string()).into(),
         Some(Token::Quote) => Ok(list![Exp::Ident("quote".into()), from_tokens(tokens)?].into()),
         Some(Token::Quasi) => Ok(list![Exp::Ident("quasi".into()), from_tokens(tokens)?].into()),
         Some(Token::Unquote) => {
@@ -226,7 +226,7 @@ fn from_tokens(tokens: &mut Peekable<TokenIter>) -> TinResult<Exp> {
                             tokens.next();
                             let tok = from_tokens(tokens)?;
                             if tokens.next() != Some(Token::Pclose) {
-                                return Err(TinError::SyntaxError("missing ')'".to_owned()));
+                                return TinError::SyntaxError("missing ')'".to_owned()).into();
                             }
                             return Ok(Exp::DotList(v.into(), Box::new(tok)));
                         }
@@ -255,10 +255,10 @@ fn from_tokens(tokens: &mut Peekable<TokenIter>) -> TinResult<Exp> {
             let lst: List = v.into();
             Ok(Exp::List(lst.cons(Exp::Ident("make_hash".into()))))
         }
-        Some(Token::Dot) => Err(TinError::SyntaxError("Unexpected '.'".to_string())),
-        Some(Token::Mclose) => Err(TinError::SyntaxError("Unexpected '}'".to_string())),
-        Some(Token::Vclose) => Err(TinError::SyntaxError("Unexpected ']'".to_string())),
-        Some(Token::Pclose) => Err(TinError::SyntaxError("Unexpected ')'".to_string())),
+        Some(Token::Dot) => TinError::SyntaxError("Unexpected '.'".to_string()).into(),
+        Some(Token::Mclose) => TinError::SyntaxError("Unexpected '}'".to_string()).into(),
+        Some(Token::Vclose) => TinError::SyntaxError("Unexpected ']'".to_string()).into(),
+        Some(Token::Pclose) => TinError::SyntaxError("Unexpected ')'".to_string()).into(),
         Some(Token::Ident(a)) => Ok(Exp::Ident(a.into())),
         Some(Token::String(s)) => Ok(Exp::String(s.into())),
         Some(Token::Symbol(s)) => Ok(Exp::Ident(s.to_string().into())),

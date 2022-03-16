@@ -1,4 +1,4 @@
-use super::{Exp, TinError};
+use super::{Exp, TinError, TinResult};
 use std::{
     convert::{AsRef, From, TryFrom},
     fmt::Display,
@@ -37,15 +37,12 @@ impl From<&str> for Symbol {
 }
 
 impl TryFrom<Exp> for Symbol {
-    type Error = TinError;
+    type Error = Box<TinError>;
 
-    fn try_from(value: Exp) -> Result<Self, Self::Error> {
+    fn try_from(value: Exp) -> TinResult<Self> {
         match value {
             Exp::Ident(s) => Ok(s),
-            _ => Err(TinError::TypeMismatch(
-                vec!["symbol".into()],
-                value.to_string(),
-            )),
+            _ => TinError::TypeMismatch(vec!["symbol".into()], value.to_string()).into(),
         }
     }
 }

@@ -57,7 +57,7 @@ impl Evaluable for Macro {
         let argc = args.len();
         let plen = self.params.len();
         if argc < plen {
-            return Err(TinError::ArityMismatch(plen, argc));
+            return TinError::ArityMismatch(plen, argc).into();
         }
         let mut env = Environment::from(self.env.clone());
         let mut it = args;
@@ -68,7 +68,7 @@ impl Evaluable for Macro {
 
         match (self.va.as_ref(), it.len()) {
             (None, 0) => {}
-            (None, _) => return Err(TinError::ArityMismatch(plen, argc)),
+            (None, _) => return TinError::ArityMismatch(plen, argc).into(),
             (Some(x), _) => env.insert(x.clone(), it.into()),
         }
 

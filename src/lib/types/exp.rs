@@ -60,9 +60,9 @@ impl TryFrom<Exp> for Vec<Exp> {
 
 impl<T> TryFrom<Exp> for Vec<T>
 where
-    T: TryFrom<Exp, Error = TinError>,
+    T: TryFrom<Exp, Error = Box<TinError>>,
 {
-    type Error = TinError;
+    type Error = Box<TinError>;
 
     fn try_from(value: Exp) -> Result<Self, Self::Error> {
         if let Exp::Vector(v) = value {
@@ -72,10 +72,7 @@ where
                 .collect::<TinResult<_>>();
         }
 
-        return Err(TinError::TypeMismatch(
-            vec!["vector".to_string()],
-            value.to_string(),
-        ));
+        return TinError::TypeMismatch(vec!["vector".to_string()], value.to_string()).into();
     }
 }
 

@@ -12,10 +12,13 @@ use TinError::{ArityMismatch, NotCallable};
 
 pub fn eval(env: EnvironmentRef, x: Exp) -> TinResult<Exp> {
     match x {
-        Exp::Ident(s) => env.borrow().get(&s).ok_or(TinError::Undefined(s.into())),
+        Exp::Ident(s) => env
+            .borrow()
+            .get(&s)
+            .ok_or(TinError::Undefined(s.into()).into()),
         Exp::List(lst) => match lst.snoc() {
             Some((head, tail)) => eval_list(env, head.clone(), tail),
-            _ => Err(NotCallable(Exp::List(List::new()))),
+            _ => NotCallable(Exp::List(List::new())).into(),
         },
         _ => Ok(x),
     }
@@ -28,20 +31,20 @@ fn eval_vector(env: EnvironmentRef, v: Vec<Exp>, args: List) -> TinResult<Exp> {
         if let Number::Int(idx) = head {
             let idx = idx as usize;
             if idx >= v.len() {
-                return Err(TinError::OutOfRange(idx));
+                return TinError::OutOfRange(idx).into();
             }
             return Ok(v[idx].clone());
         }
         unreachable!()
     } else {
-        Err(TinError::ArityMismatch(1, args.len()))
+        TinError::ArityMismatch(1, args.len()).into()
     }
 }
 
 fn eval_map(_env: EnvironmentRef, m: Map, args: List) -> TinResult<Exp> {
     let key: Key = utils::list1(args)?.clone().try_into()?;
     if !m.includes(&key) {
-        return Err(TinError::KeyNotFound(key));
+        return TinError::KeyNotFound(key).into();
     }
     return Ok(m[&key].clone());
 }
@@ -51,7 +54,7 @@ fn eval_unqote(env: EnvironmentRef, lst: List) -> TinResult<Exp> {
         let head = lst.head().unwrap();
         eval(env, head.clone())
     } else {
-        Err(TinError::ArityMismatch(1, lst.len()))
+        TinError::ArityMismatch(1, lst.len()).into()
     }
 }
 
@@ -82,7 +85,7 @@ fn eval_list(env: EnvironmentRef, op: Exp, args: List) -> TinResult<Exp> {
         }
         Exp::Ident(s) => eval_symbol(env, s, args),
         Exp::List(lst) => eval_list(env.clone(), eval(env, lst.into())?, args),
-        Exp::Number(_) | Exp::Char(_) | Exp::Bool(_) => Err(TinError::NotCallable(op)),
+        Exp::Number(_) | Exp::Char(_) | Exp::Bool(_) => TinError::NotCallable(op).into(),
         op => {
             let args: List = args
                 .iter()
@@ -114,7 +117,7 @@ fn lambda(env: EnvironmentRef, pars: List, body: Exp) -> TinResult<Exp> {
         .iter()
         .map(|x| match x {
             Exp::Ident(x) => Ok(x.clone()),
-            x => Err(TinError::NotASymbol(x.clone())),
+            x => TinError::NotASymbol(x.clone()).into(),
         })
         .collect::<TinResult<_>>()?;
     Ok(Exp::Proc(Proc::new(
@@ -129,7 +132,7 @@ fn lambda_va(env: EnvironmentRef, pars: List, va: Exp, body: Exp) -> TinResult<E
         .iter()
         .map(|x| match x {
             Exp::Ident(x) => Ok(x.clone()),
-            x => Err(TinError::NotASymbol(x.clone())),
+            x => TinError::NotASymbol(x.clone()).into(),
         })
         .collect::<TinResult<_>>()?;
     let va = va.try_into()?;
@@ -154,14 +157,14 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, args: List) -> TinResult<Exp> {
     match op.as_ref() {
         "quote" => {
             if args.len() > 1 {
-                Err(ArityMismatch(2, args.len()))
+                ArityMismatch(2, args.len()).into()
             } else {
                 Ok(args.head().unwrap().clone())
             }
         }
         "quasi" => {
             if args.len() > 1 {
-                Err(ArityMismatch(2, args.len()))
+                ArityMismatch(2, args.len()).into()
             } else {
                 let head = args.head().unwrap().clone();
                 eval_quasi(env, head)
@@ -176,7 +179,7 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, args: List) -> TinResult<Exp> {
         }
         "make_hash" => {
             if args.len() % 2 != 0 {
-                return Err(TinError::SyntaxError("Unbalanced map".to_string()));
+                return TinError::SyntaxError("Unbalanced map".to_string()).into();
             }
             let mut m = Map::new();
             for c in args.as_vec().chunks(2) {
@@ -189,7 +192,7 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, args: List) -> TinResult<Exp> {
         }
         "let" => {
             if args.len() < 2 {
-                return Err(ArityMismatch(3, args.len()));
+                return ArityMismatch(3, args.len()).into();
             }
             let mut args = args.iter();
             let v = match args.next().unwrap().clone() {
@@ -205,15 +208,12 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, args: List) -> TinResult<Exp> {
                     out
                 }
                 x => {
-                    return Err(TinError::TypeMismatch(
-                        vec!["vector".to_string()],
-                        x.to_string(),
-                    ))
+                    return TinError::TypeMismatch(vec!["vector".to_string()], x.to_string()).into()
                 }
             };
 
             if v.len() % 2 != 0 {
-                return Err(TinError::SyntaxError("Unbalanced let".to_string()));
+                return TinError::SyntaxError("Unbalanced let".to_string()).into();
             }
             let body = args.next().unwrap();
 
@@ -231,7 +231,7 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, args: List) -> TinResult<Exp> {
         }
         "if" => {
             if args.len() != 3 {
-                return Err(ArityMismatch(3, args.len()));
+                return ArityMismatch(3, args.len()).into();
             }
             let (test, args) = args.snoc().unwrap();
             let (ok, args) = args.snoc().unwrap();
@@ -244,7 +244,7 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, args: List) -> TinResult<Exp> {
         }
         "define" | "def" => {
             if args.len() != 2 {
-                return Err(ArityMismatch(2, args.len()));
+                return ArityMismatch(2, args.len()).into();
             }
             let (def, args) = args.snoc().unwrap();
             let def = def.clone();
@@ -257,7 +257,7 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, args: List) -> TinResult<Exp> {
                     Ok(Exp::List(List::new()))
                 }
                 Exp::DotList(lst, va) => match lst.snoc() {
-                    None => Err(TinError::Null),
+                    None => TinError::Null.into(),
                     Some((def, args)) => {
                         let body = lambda_va(env.clone(), args, *va.clone(), body)?;
                         let def = def.clone().try_into()?;
@@ -268,7 +268,7 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, args: List) -> TinResult<Exp> {
                 },
 
                 Exp::List(lst) => match lst.snoc() {
-                    None => Err(TinError::Null),
+                    None => TinError::Null.into(),
                     Some((def, args)) => {
                         let body = lambda(env.clone(), args, body)?;
                         let def = def.clone().try_into()?;
@@ -277,7 +277,7 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, args: List) -> TinResult<Exp> {
                         Ok(Exp::List(List::new()))
                     }
                 },
-                _ => Err(TinError::NotASymbol(def)),
+                _ => TinError::NotASymbol(def).into(),
             }
         }
         "do" => {
@@ -289,7 +289,7 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, args: List) -> TinResult<Exp> {
         }
         "set!" => {
             if args.len() != 2 {
-                return Err(ArityMismatch(2, args.len()));
+                return ArityMismatch(2, args.len()).into();
             }
             let (def, args) = args.snoc().unwrap();
             let val = args.head().unwrap();
@@ -302,31 +302,28 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, args: List) -> TinResult<Exp> {
         }
         "print" => {
             if args.len() != 1 {
-                return Err(ArityMismatch(1, args.len()));
+                return ArityMismatch(1, args.len()).into();
             }
             println!("{}", eval(env, args.head().unwrap().clone())?);
             Ok(Exp::List(List::new()))
         }
         "eprint" => {
             if args.len() != 1 {
-                return Err(ArityMismatch(1, args.len()));
+                return ArityMismatch(1, args.len()).into();
             }
             eprintln!("{}", eval(env, args.head().unwrap().clone())?);
             Ok(Exp::List(List::new()))
         }
         "lambda" | "λ" => {
             if args.len() != 2 {
-                return Err(ArityMismatch(2, args.len()));
+                return ArityMismatch(2, args.len()).into();
             }
             let (params, args) = args.snoc().unwrap();
             let (body, _) = args.snoc().unwrap();
             match params {
                 Exp::List(lst) => lambda(env, lst.clone(), body.clone()),
                 Exp::DotList(lst, va) => lambda_va(env, lst.clone(), *va.clone(), body.clone()),
-                _ => Err(TinError::TypeMismatch(
-                    vec!["list".to_string()],
-                    params.to_string(),
-                )),
+                _ => TinError::TypeMismatch(vec!["list".to_string()], params.to_string()).into(),
             }
         }
         "gensym" => {
@@ -338,7 +335,7 @@ fn eval_symbol(env: EnvironmentRef, op: Symbol, args: List) -> TinResult<Exp> {
         }
         "defmacro" => {
             if args.len() != 3 {
-                return Err(TinError::ArityMismatch(3, args.len()));
+                return TinError::ArityMismatch(3, args.len()).into();
             }
             let mut args = args.iter();
             let name = args.next().unwrap().clone();

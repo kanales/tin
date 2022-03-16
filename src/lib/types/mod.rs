@@ -62,7 +62,14 @@ impl Display for TinError {
     }
 }
 
-pub type TinResult<R> = Result<R, TinError>;
+pub type TinResult<R> = Result<R, Box<TinError>>;
+
+impl<T> From<TinError> for TinResult<T> {
+    fn from(e: TinError) -> Self {
+        Err(Box::new(e))
+    }
+}
+
 pub use environment::{Environment, EnvironmentRef};
 
 pub trait Evaluable {
@@ -101,7 +108,7 @@ impl Evaluable for Proc {
         let argc = args.len();
         let plen = self.params.len();
         if argc < plen {
-            return Err(TinError::ArityMismatch(plen, argc));
+            return TinError::ArityMismatch(plen, argc).into();
         }
         let mut env = Environment::from(self.env.clone());
         let mut it = args;
@@ -112,7 +119,7 @@ impl Evaluable for Proc {
 
         match (self.va.as_ref(), it.len()) {
             (None, 0) => {}
-            (None, _) => return Err(TinError::ArityMismatch(plen, argc)),
+            (None, _) => return TinError::ArityMismatch(plen, argc).into(),
             (Some(x), _) => env.insert(x.clone(), it.into()),
         }
 

@@ -88,11 +88,11 @@ impl Environment {
                 Exp::Vector(v) => Ok((v.len() as i64).into()),
                 Exp::Map(m) => Ok(m.len().into()),
                 Exp::String(s) => Ok(s.len().into()),
-                x => Err(TinError::TypeMismatch(vec![
+                x => TinError::TypeMismatch(vec![
                     "list".into(),
                     "vector".into(),
                     "hash".into()
-                ], x.to_string()))
+                ], x.to_string()).into()
              }
             }),
             "list" => Closure::new(|args| Ok(Exp::List(List::from(args)))),
@@ -100,7 +100,7 @@ impl Environment {
             "min" => Closure::new(procs::min),
             "map" => Closure::new(|args| {
                 if args.len() != 2 {
-                    return Err(TinError::ArityMismatch(2, args.len()));
+                    return TinError::ArityMismatch(2, args.len()).into();
                 }
                 unimplemented!()
 
@@ -138,7 +138,7 @@ impl Environment {
 
                  lst.head()
                      .map(|x| x.clone())
-                     .ok_or(TinError::TypeMismatch(vec!["list".to_string()],Exp::List(lst).to_string()))
+                     .ok_or(TinError::TypeMismatch(vec!["list".to_string()],Exp::List(lst).to_string()).into())
             }),
             "cdr" => Closure::new(|args| {
                 let lst: List = utils::list1(args)?.try_into()?;
@@ -147,7 +147,7 @@ impl Environment {
             }),
             "cons" => Closure::new(|args| {
                 if args.len() != 2 {
-                    return Err(TinError::ArityMismatch(1, args.len()))
+                    return TinError::ArityMismatch(1, args.len()).into()
                 }
                 let (head, tail) = utils::list2(args)?;
                 let tail: List = tail.try_into()?;
