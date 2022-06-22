@@ -1,3 +1,6 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use crate::datum::{Datum, Symbol};
 use crate::error::TinResult;
 use crate::eval::{Environ, Evaluable, Interner};
@@ -44,7 +47,7 @@ impl Interner for SymbolDict {
 
 pub struct TinState {
     interner: SymbolDict,
-    environ: Mapping,
+    environ: Rc<RefCell<Mapping>>,
 }
 
 #[macro_export]
@@ -61,7 +64,7 @@ impl TinState {
     pub fn new() -> Self {
         TinState {
             interner: SymbolDict::new(),
-            environ: Mapping::new(),
+            environ: Rc::new(RefCell::new(Mapping::new())),
         }
     }
     pub fn define_closure<F>(&mut self, s: Symbol, f: F)
@@ -70,18 +73,19 @@ impl TinState {
     {
         let kw = self.intern(&s);
         let cl = Closure::new(f);
-        Def::new(kw, cl.into()).eval_using(self).unwrap();
+        Def::new(kw, cl.into())
+            .eval_using(&mut self.interner, &mut self.environ)
+            .unwrap();
     }
 
     pub fn eval_str(&mut self, s: &str) -> TinResult<TinValue> {
         let d = parse_str(s)?;
-        println!("# {:?}", d);
         self.eval_datum(d)
     }
 
     pub fn eval_datum(&mut self, d: Datum) -> TinResult<TinValue> {
-        let expr = d.eval_using(self)?;
-        expr.eval_using(self)
+        let expr = d.eval_using(&mut self.interner, &mut self.environ)?;
+        expr.eval_using(&mut self.interner, &mut self.environ)
     }
 }
 
@@ -96,15 +100,5 @@ impl Interner for TinState {
 
     fn unintern(&self, sym: Ident) -> &Symbol {
         self.interner.unintern(sym)
-    }
-}
-
-impl Environ for TinState {
-    fn fetch(&self, sym: &Ident) -> Option<TinValue> {
-        self.environ.fetch(sym)
-    }
-
-    fn put(&mut self, sym: Ident, val: TinValue) {
-        self.environ.put(sym, val)
     }
 }

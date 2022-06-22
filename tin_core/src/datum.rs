@@ -94,6 +94,8 @@ macro_rules! ensure_symbol {
     }};
 }
 
+/// foo bar baz
+
 mod list {
 
     use core::fmt;

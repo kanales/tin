@@ -1,6 +1,6 @@
-use crate::datum::Datum;
+use crate::{datum::Datum, value::TinValue};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum TinError {
     SyntaxError(String),
     SymbolExpected(String),
@@ -9,6 +9,8 @@ pub enum TinError {
     NotAProc(Box<Datum>),
     NotASymbol(Box<Datum>),
     NotANumber,
+    NotFormals(Box<Datum>),
+    NotAnIdentifier(Box<TinValue>),
     UndefinedSymbol(String),
     EOF,
 }
