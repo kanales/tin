@@ -1,11 +1,8 @@
-use std::cell::RefCell;
-use std::rc::Rc;
-
 use crate::datum::{Datum, Symbol};
 use crate::error::TinResult;
-use crate::eval::{Environ, Evaluable, Interner};
+use crate::eval::{Evaluable, Interner};
 use crate::parser::parse_str;
-use crate::value::{Closure, Def, Ident, Mapping, TinValue};
+use crate::value::{Closure, Def, Environment, Function, Ident, TinValue};
 
 struct SymbolDict {
     symbols: Vec<Symbol>,
@@ -47,7 +44,7 @@ impl Interner for SymbolDict {
 
 pub struct TinState {
     interner: SymbolDict,
-    environ: Rc<RefCell<Mapping>>,
+    environ: Environment,
 }
 
 #[macro_export]
@@ -64,13 +61,10 @@ impl TinState {
     pub fn new() -> Self {
         TinState {
             interner: SymbolDict::new(),
-            environ: Rc::new(RefCell::new(Mapping::new())),
+            environ: Environment::new(),
         }
     }
-    pub fn define_closure<F>(&mut self, s: Symbol, f: F)
-    where
-        F: Fn(Vec<TinValue>) -> TinResult<TinValue> + 'static,
-    {
+    pub fn define_closure(&mut self, s: Symbol, f: Function) {
         let kw = self.intern(&s);
         let cl = Closure::new(f);
         Def::new(kw, cl.into())

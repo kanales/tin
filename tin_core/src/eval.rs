@@ -4,19 +4,13 @@ use std::rc::Rc;
 
 use crate::datum::{Datum, Symbol};
 use crate::error::{TinError, TinResult};
-use crate::value::{App, Def, Ident, If, Lambda, Pair, TinCell, TinValue};
+use crate::value::{App, Def, Environment, Ident, If, Lambda, Pair, TinCell, TinValue};
 use crate::{ensure_arity, ensure_symbol};
 
-pub trait Environ: Debug {
-    fn fetch(&self, sym: &Ident) -> Option<TinValue>;
-    fn put(&mut self, sym: Ident, val: TinValue);
-    fn make_child(s: &Self) -> Self;
-}
 pub trait Evaluable {
-    fn eval_using<I, E>(&self, a: &mut I, b: &mut E) -> TinResult<TinValue>
+    fn eval_using<I>(&self, a: &mut I, b: &mut Environment) -> TinResult<TinValue>
     where
-        I: Interner,
-        E: Environ;
+        I: Interner;
 }
 
 pub trait Interner {
@@ -26,10 +20,9 @@ pub trait Interner {
 }
 
 type NonEmpty<T> = Vec<T>;
-fn eval_list<I, E>(list: NonEmpty<Datum>, i: &mut I, e: &mut E) -> TinResult<TinValue>
+fn eval_list<I>(list: NonEmpty<Datum>, i: &mut I, e: &mut Environment) -> TinResult<TinValue>
 where
     I: Interner,
-    E: Environ,
 {
     #[allow(unused_mut)]
     match &list[0] {
@@ -58,7 +51,8 @@ where
                             .map(|x| x.eval_using(i, e))
                             .collect::<TinResult<_>>()?;
 
-                        let f = Lambda::new_list(formals, body);
+                        let f = Lambda::builder().formals(formals).body(body).build();
+
                         Ok(Def::new(sym, f.into()).into())
                     }
                     Datum::DotList(list, tail) => {
@@ -73,7 +67,11 @@ where
                             .map(|x| x.eval_using(i, e))
                             .collect::<TinResult<_>>()?;
 
-                        let f = Lambda::new_dotted(formals, t, body);
+                        let f = Lambda::builder()
+                            .formals(formals)
+                            .body(body)
+                            .va_sink(t)
+                            .build();
                         Ok(Def::new(sym, f.into()).into())
                     }
                     x => Err(TinError::NotFormals(Box::new(x))),
@@ -113,7 +111,8 @@ where
                         let sym = i.intern(&s);
                         let body: Vec<TinValue> =
                             it.map(|el| el.eval_using(i, e)).collect::<TinResult<_>>()?;
-                        Ok(Lambda::new_symbol(sym, body).into())
+                        let lambda = Lambda::builder().body(body).va_sink(sym).build();
+                        Ok(lambda.into())
                     }
 
                     Some(Datum::List(s)) => {
@@ -123,7 +122,8 @@ where
                             .collect::<TinResult<_>>()?;
                         let body: Vec<TinValue> =
                             it.map(|el| el.eval_using(i, e)).collect::<TinResult<_>>()?;
-                        Ok(Lambda::new_list(formals, body).into())
+                        let lambda = Lambda::builder().formals(formals).body(body).build();
+                        Ok(lambda.into())
                     }
                     Some(Datum::DotList(s, t)) => {
                         if let Datum::Symbol(sym) = t.as_ref() {
@@ -134,7 +134,12 @@ where
                                 .collect::<TinResult<_>>()?;
                             let body: Vec<TinValue> =
                                 it.map(|el| el.eval_using(i, e)).collect::<TinResult<_>>()?;
-                            Ok(Lambda::new_dotted(formals, id, body).into())
+                            let lambda = Lambda::builder()
+                                .formals(formals)
+                                .body(body)
+                                .va_sink(id)
+                                .build();
+                            Ok(lambda.into())
                         } else {
                             Err(TinError::NotASymbol(t))
                         }
@@ -178,10 +183,9 @@ where
 }
 
 impl Evaluable for Datum {
-    fn eval_using<I, E>(&self, i: &mut I, e: &mut E) -> TinResult<TinValue>
+    fn eval_using<I>(&self, i: &mut I, e: &mut Environment) -> TinResult<TinValue>
     where
         I: Interner,
-        E: Environ,
     {
         match self {
             Datum::Bool(b) => b.eval_using(i, e),

@@ -1,6 +1,6 @@
 use crate::{datum::Datum, value::TinValue};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum TinError {
     SyntaxError(String),
     SymbolExpected(String),

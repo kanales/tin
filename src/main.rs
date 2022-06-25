@@ -14,7 +14,7 @@ fn main() {
 
     def_closure!(state, "+", |vals| {
         let num = vals.into_iter().fold(Ok(0f64), |a, v| {
-            let n: f64 = v.try_into()?;
+            let n: f64 = v.as_ref().try_into()?;
             Ok(a? + n)
         })?;
         Ok(num.into())

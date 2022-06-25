@@ -54,6 +54,18 @@ impl TryFrom<TinValue> for f64 {
     }
 }
 
+impl TryFrom<&TinValue> for f64 {
+    type Error = TinError;
+
+    fn try_from(value: &TinValue) -> Result<Self, Self::Error> {
+        if let TinValue::Number(n) = value {
+            Ok(*n)
+        } else {
+            Err(TinError::NotANumber)
+        }
+    }
+}
+
 impl TryFrom<TinValue> for Ident {
     type Error = TinError;
     fn try_from(value: TinValue) -> Result<Self, Self::Error> {

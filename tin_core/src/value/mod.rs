@@ -1,18 +1,17 @@
-use std::{
-    cell::{Cell, RefCell},
-    collections::HashMap,
-    rc::Rc,
-};
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
+use std::iter::FromIterator;
+use std::rc::Rc;
 
 use crate::{
     datum::{Datum, Symbol},
     error::{TinError, TinResult},
-    eval::{Environ, Evaluable, Interner},
+    eval::{Evaluable, Interner},
 };
 mod convert;
 // use convert::*;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Pair {
     car: TinValue,
     cdr: TinValue,
@@ -35,12 +34,74 @@ impl Pair {
     }
 }
 
+#[derive(Debug, PartialEq, Clone)]
+pub enum List {
+    Pair(Rc<TinValue>, Rc<List>),
+    Nil,
+}
+
+impl List {
+    fn new() -> Self {
+        Self::Nil
+    }
+}
+
+impl IntoIterator for List {
+    type Item = Rc<TinValue>;
+    type IntoIter = ListIterator;
+    fn into_iter(self) -> Self::IntoIter {
+        ListIterator(Rc::new(self))
+    }
+}
+
+#[test]
+fn test_from_iterator() {
+    let src: Vec<TinValue> = vec![1.0.into(), 2.0.into(), 3.0.into()];
+    let lst: List = src.clone().into_iter().collect();
+    let mut it = lst.into_iter();
+    for el in src {
+        let el2 = it.next().unwrap();
+        assert_eq!(&el, el2.as_ref());
+    }
+}
+
+impl FromIterator<TinValue> for List {
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = TinValue>,
+    {
+        let sink: Vec<_> = iter.into_iter().collect();
+        let mut s = List::Nil;
+        for el in sink.into_iter().rev() {
+            s = List::Pair(Rc::new(el), Rc::new(s))
+        }
+        s
+    }
+}
+
+pub struct ListIterator(Rc<List>);
+
+impl Iterator for ListIterator {
+    type Item = Rc<TinValue>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let s = Rc::clone(&self.0);
+        match s.as_ref() {
+            List::Nil => None,
+            List::Pair(car, cdr) => {
+                self.0 = Rc::clone(cdr);
+                Some(Rc::clone(car))
+            }
+        }
+    }
+}
+
 pub type Ident = usize; // Interned symbol
 
 #[derive(Debug)]
 pub struct Mapping {
     env: HashMap<Ident, TinValue>,
-    parent: Option<Rc<RefCell<Mapping>>>,
+    parent: Option<Environment>,
 }
 
 impl Mapping {
@@ -52,67 +113,132 @@ impl Mapping {
     }
 }
 
-impl Environ for Rc<RefCell<Mapping>> {
-    fn fetch(&self, sym: &Ident) -> Option<TinValue> {
-        self.as_ref()
+#[derive(Debug, Clone)]
+pub struct Environment(Rc<RefCell<Mapping>>);
+
+impl PartialEq for Environment {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.as_ptr() == other.0.as_ptr()
+    }
+}
+
+// Rc<RefCell<Mapping>>
+impl Environment {
+    pub fn new() -> Self {
+        Environment(Rc::new(RefCell::new(Mapping::new())))
+    }
+
+    pub fn fetch(&self, sym: &Ident) -> Option<TinValue> {
+        self.0
+            .as_ref()
             .borrow()
             .env
             .get(sym)
             .map(TinValue::clone)
-            .or_else(|| self.borrow().parent.as_ref().and_then(|p| p.fetch(sym)))
+            .or_else(|| self.0.borrow().parent.as_ref().and_then(|p| p.fetch(sym)))
     }
-    fn put(&mut self, sym: Ident, val: TinValue) {
-        self.borrow_mut().env.insert(sym, val);
+    pub fn put(&mut self, sym: Ident, val: TinValue) {
+        self.0.borrow_mut().env.insert(sym, val);
     }
 
-    fn make_child(s: &Self) -> Self {
-        Rc::new(RefCell::new(Mapping {
-            env: HashMap::new(),
-            parent: Some(Rc::clone(s)),
-        }))
+    pub fn make_child(&self) -> Self {
+        let mut child = Mapping::new();
+        child.parent = Some(Environment(Rc::clone(&self.0)));
+
+        Environment(Rc::new(RefCell::new(child)))
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Lambda {
     formals: Vec<Ident>,
     va_sink: Option<Ident>,
     body: Vec<TinValue>,
+    upvalues: Option<Environment>,
+}
+
+pub struct Set<T>(T);
+pub struct Unset;
+
+impl<T> Set<T> {
+    fn new(t: T) -> Self {
+        Set(t)
+    }
+    fn into_inner(self) -> T {
+        self.0
+    }
+}
+
+#[derive(Debug)]
+pub struct LambdaBuilder<T1, T2> {
+    formals: T1,
+    body: T2,
+    sink: Option<Ident>,
+    env: Option<Environment>,
+}
+
+impl LambdaBuilder<Set<Vec<Ident>>, Set<Vec<TinValue>>> {
+    pub fn build(self) -> Lambda {
+        Lambda {
+            formals: self.formals.into_inner(),
+            va_sink: self.sink,
+            body: self.body.into_inner(),
+            upvalues: self.env,
+        }
+    }
+}
+
+impl LambdaBuilder<Unset, Set<Vec<TinValue>>> {
+    pub fn build(self) -> Lambda {
+        Lambda {
+            formals: Vec::new(),
+            va_sink: self.sink,
+            body: self.body.into_inner(),
+            upvalues: self.env,
+        }
+    }
+}
+
+impl<T1, T2> LambdaBuilder<T1, T2> {
+    pub fn upvalues(mut self, env: Environment) -> LambdaBuilder<T1, T2> {
+        self.env = Some(env);
+        self
+    }
+
+    pub fn va_sink(mut self, id: Ident) -> LambdaBuilder<T1, T2> {
+        self.sink = Some(id);
+        self
+    }
+    pub fn formals(self, f: Vec<Ident>) -> LambdaBuilder<Set<Vec<Ident>>, T2> {
+        LambdaBuilder {
+            formals: Set::new(f),
+            body: self.body,
+            sink: self.sink,
+            env: self.env,
+        }
+    }
+    pub fn body(self, b: Vec<TinValue>) -> LambdaBuilder<T1, Set<Vec<TinValue>>> {
+        LambdaBuilder {
+            formals: self.formals,
+            body: Set::new(b),
+            sink: self.sink,
+            env: self.env,
+        }
+    }
 }
 
 impl Lambda {
-    pub fn new_no_params(body: Vec<TinValue>) -> Self {
-        Lambda {
-            formals: Vec::new(),
-            va_sink: None,
-            body,
+    pub fn builder() -> LambdaBuilder<Unset, Unset> {
+        LambdaBuilder {
+            formals: Unset,
+            env: None,
+            sink: None,
+            body: Unset,
         }
     }
+}
 
-    pub fn new_symbol(va: Ident, body: Vec<TinValue>) -> Self {
-        Lambda {
-            formals: Vec::new(),
-            va_sink: Some(va),
-            body,
-        }
-    }
-
-    pub fn new_dotted(formals: Vec<Ident>, va: Ident, body: Vec<TinValue>) -> Self {
-        Lambda {
-            formals,
-            va_sink: Some(va),
-            body,
-        }
-    }
-
-    pub fn new_list(formals: Vec<Ident>, body: Vec<TinValue>) -> Self {
-        Lambda {
-            formals,
-            va_sink: None,
-            body,
-        }
-    }
-
+impl Lambda {
     /// returns None if accepting varargs
     pub fn arity(&self) -> Option<usize> {
         if let None = self.va_sink {
@@ -128,26 +254,72 @@ impl Lambda {
             None => false,
         }
     }
-}
 
-impl Evaluable for Lambda {
-    fn eval_using<I, E>(&self, i: &mut I, e: &mut E) -> TinResult<TinValue>
+    pub fn call<I>(
+        &self,
+        args: Vec<TinValue>,
+        i: &mut I,
+        e: &mut Environment,
+    ) -> TinResult<TinValue>
     where
         I: Interner,
-        E: Environ,
     {
-        if self.formals.len() == 0 {
-            let mut local = E::make_child(e);
+        let bl = args.len();
+        let fl = self.formals.len();
+        if bl < fl {
+            return Err(TinError::ArityMismatch(fl, bl));
+        }
+        let mut env = self
+            .upvalues
+            .as_ref()
+            .map(|e| e.clone())
+            .unwrap_or_else(|| e.make_child());
+
+        if let Some(s) = self.va_sink {
+            let mut it = args.iter().map(TinValue::clone);
+            for (el, sym) in it.by_ref().zip(self.formals.iter()) {
+                env.put(*sym, el)
+            }
+            let rest = Pair::from_iter(it);
+            env.put(s, rest);
+
+            let mut last = TinValue::Nil;
+
+            for el in self.body.iter() {
+                last = el.eval_using(i, &mut env)?;
+            }
+            return Ok(last);
+        } else {
+            if bl > fl {
+                return Err(TinError::ArityMismatch(fl, bl));
+            }
+            let it = args.iter().map(TinValue::clone);
+            for (el, sym) in it.zip(self.formals.iter()) {
+                env.put(*sym, el)
+            }
             self.body
                 .iter()
-                .fold(Ok(TinValue::Nil), |_a, exp| exp.eval_using(i, &mut local))
-        } else {
-            Err(TinError::ArityMismatch(0, self.formals.len()))
+                .fold(Ok(TinValue::Nil), |_, exp| exp.eval_using(i, &mut env))
         }
     }
 }
 
-#[derive(Debug)]
+impl Evaluable for Lambda {
+    fn eval_using<I>(&self, _i: &mut I, e: &mut Environment) -> TinResult<TinValue>
+    where
+        I: Interner,
+    {
+        let new = Lambda {
+            formals: self.formals.clone(),
+            body: self.body.clone(),
+            va_sink: self.va_sink,
+            upvalues: Some(e.clone()),
+        };
+        Ok(new.into())
+    }
+}
+
+#[derive(Debug, PartialEq)]
 pub struct If {
     test: TinValue,
     conseq: TinValue,
@@ -176,6 +348,17 @@ pub struct TinCell {
     inner: Cell<TinValue>,
 }
 
+impl PartialEq for TinCell {
+    fn eq(&self, other: &Self) -> bool {
+        let left = self.inner.take();
+        let right = other.inner.take();
+        let test = left == right;
+        self.inner.set(left);
+        other.inner.set(right);
+        test
+    }
+}
+
 impl TinCell {
     pub fn new(v: TinValue) -> Self {
         TinCell {
@@ -186,36 +369,61 @@ impl TinCell {
 
 impl std::fmt::Debug for TinCell {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "TinCell {{ ... }}")
+        write!(f, "TinCell {{ inner: ... }}")
     }
 }
 
-pub struct Closure(Box<dyn Fn(Vec<TinValue>) -> TinResult<TinValue>>);
+pub type Function = fn(List) -> TinResult<TinValue>;
+pub struct Closure {
+    f: Box<Function>,
+    name: Option<String>,
+}
+
+impl PartialEq for Closure {
+    fn eq(&self, other: &Self) -> bool {
+        (self.name == other.name) || (self.f == other.f)
+    }
+}
+
 impl Closure {
-    pub fn new<F>(f: F) -> Self
-    where
-        F: Fn(Vec<TinValue>) -> TinResult<TinValue> + 'static,
-    {
-        Closure(Box::new(f))
+    pub fn new_with_id(id: String, f: Function) -> Self {
+        Closure {
+            f: Box::new(f),
+            name: Some(id),
+        }
+    }
+    pub fn new(f: Function) -> Self {
+        Closure {
+            f: Box::new(f),
+            name: None,
+        }
+    }
+
+    pub fn call(&self, args: List) -> Result<TinValue, TinError> {
+        (self.f)(args)
     }
 }
 
 impl std::fmt::Debug for Closure {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Closure(...)")
+        if let Some(x) = &self.name {
+            write!(f, "#closure({})", x)
+        } else {
+            write!(f, "#closure")
+        }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Def(Ident, TinValue);
 
 impl Evaluable for Def {
-    fn eval_using<I, E>(&self, _i: &mut I, e: &mut E) -> TinResult<TinValue>
+    fn eval_using<I>(&self, i: &mut I, e: &mut Environment) -> TinResult<TinValue>
     where
         I: Interner,
-        E: Environ,
     {
-        e.put(self.0, self.1.clone());
+        let v = self.1.eval_using(i, e)?;
+        e.put(self.0, v);
         Ok(TinValue::Nil)
     }
 }
@@ -226,7 +434,7 @@ impl Def {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct App {
     cmd: TinValue,
     body: Vec<TinValue>,
@@ -239,55 +447,28 @@ impl App {
 }
 
 impl Evaluable for App {
-    fn eval_using<I, E>(&self, i: &mut I, e: &mut E) -> TinResult<TinValue>
+    fn eval_using<I>(&self, i: &mut I, e: &mut Environment) -> TinResult<TinValue>
     where
         I: Interner,
-        E: Environ,
     {
-        let body = self
-            .body
-            .iter()
-            .map(|x| x.eval_using(i, e))
-            .collect::<TinResult<_>>()?;
-        match &self.cmd {
-            TinValue::Closure(c) => c.0(body),
-            TinValue::Lambda(l) => {
-                let bl = body.len();
-                let fl = l.formals.len();
-                if bl < fl {
-                    return Err(TinError::ArityMismatch(fl, bl));
-                }
-                let mut env = E::make_child(e);
-                if let Some(s) = l.va_sink {
-                    let mut it = body.iter().map(TinValue::clone);
-                    for (el, sym) in it.by_ref().zip(l.formals.iter()) {
-                        env.put(*sym, el)
-                    }
-                    let rest = Pair::from_iter(it);
-                    env.put(s, rest);
-
-                    l.body
-                        .iter()
-                        .fold(Ok(TinValue::Nil), |_, exp| exp.eval_using(i, &mut env))
-                } else {
-                    if bl > fl {
-                        return Err(TinError::ArityMismatch(fl, bl));
-                    }
-                    let it = body.iter().map(TinValue::clone);
-                    for (el, sym) in it.zip(l.formals.iter()) {
-                        env.put(*sym, el)
-                    }
-                    l.body
-                        .iter()
-                        .fold(Ok(TinValue::Nil), |_, exp| exp.eval_using(i, &mut env))
-                }
+        let cmd = self.cmd.eval_using(i, e)?;
+        match cmd {
+            TinValue::Closure(c) => {
+                let args = self
+                    .body
+                    .iter()
+                    .map(|x| x.eval_using(i, e))
+                    .collect::<TinResult<_>>()?;
+                c.call(args)
             }
-            _ => todo!(),
+
+            TinValue::Lambda(l) => l.call(self.body.clone(), i, e),
+            _ => Err(TinError::NotAProc(Box::new(Datum::Nil))),
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TinValue {
     // <identifier>
     Symbol(Ident),
@@ -302,6 +483,7 @@ pub enum TinValue {
     Quote(Rc<Datum>),
     Cell(Rc<TinCell>), // mutable
     Pair(Rc<Pair>),
+    List(Rc<List>),
 
     // <procedure call>
     App(Rc<App>),
@@ -316,7 +498,12 @@ pub enum TinValue {
     Nil,
     Closure(Rc<Closure>),
     Exception(Rc<String>),
-    Environ(Rc<Mapping>),
+}
+
+impl Default for TinValue {
+    fn default() -> Self {
+        Self::Nil
+    }
 }
 
 impl TinValue {
@@ -332,10 +519,9 @@ impl TinValue {
 macro_rules! self_evaluating {
     ($t:ty => $var:ident) => {
         impl Evaluable for $t {
-            fn eval_using<I, E>(&self, i: &mut I, e: &mut E) -> TinResult<TinValue>
+            fn eval_using<I>(&self, _i: &mut I, _e: &mut Environment) -> TinResult<TinValue>
             where
                 I: Interner,
-                E: Environ,
             {
                 Ok(TinValue::$var(*self))
             }
@@ -343,25 +529,30 @@ macro_rules! self_evaluating {
     };
 }
 
+// TinValue::Vector(x) => x.eval_using(i, e),
+// TinValue::String(x) => x.eval_using(i, e),
+// TinValue::Bytes(x) => x.eval_using(i, e),
+// TinValue::Cell(x) => x.eval_using(i, e),
+// TinValue::Pair(x) => x.eval_using(i, e),
+// TinValue::List(x) => x.eval_using(i, e),
+
 self_evaluating!(bool => Bool);
 self_evaluating!(f64 => Number);
 self_evaluating!(char => Char);
 
 impl Evaluable for Rc<String> {
-    fn eval_using<I, E>(&self, i: &mut I, e: &mut E) -> TinResult<TinValue>
+    fn eval_using<I>(&self, _i: &mut I, _e: &mut Environment) -> TinResult<TinValue>
     where
         I: Interner,
-        E: Environ,
     {
         Ok(TinValue::String(Rc::clone(self)))
     }
 }
 
 impl Evaluable for If {
-    fn eval_using<I, E>(&self, i: &mut I, e: &mut E) -> TinResult<TinValue>
+    fn eval_using<I>(&self, i: &mut I, e: &mut Environment) -> TinResult<TinValue>
     where
         I: Interner,
-        E: Environ,
     {
         let t = self.test.eval_using(i, e)?;
         if t.truthy() {
@@ -375,10 +566,9 @@ impl Evaluable for If {
 }
 
 impl Evaluable for TinValue {
-    fn eval_using<I, E>(&self, i: &mut I, e: &mut E) -> TinResult<TinValue>
+    fn eval_using<I>(&self, i: &mut I, e: &mut Environment) -> TinResult<TinValue>
     where
         I: Interner,
-        E: Environ,
     {
         match self {
             // self eval
@@ -393,15 +583,25 @@ impl Evaluable for TinValue {
             TinValue::If(cond) => Rc::clone(cond).eval_using(i, e),
             TinValue::Def(d) => d.clone().eval_using(i, e),
             TinValue::Exception(_) => todo!(),
-            _ => Ok(self.clone()),
+            TinValue::Lambda(x) => x.eval_using(i, e),
+            TinValue::Number(n) => n.eval_using(i, e),
+            TinValue::Bool(x) => x.eval_using(i, e),
+            TinValue::Char(x) => x.eval_using(i, e),
+            TinValue::Vector(x) => Ok(TinValue::Vector(Rc::clone(x))),
+            TinValue::String(x) => x.eval_using(i, e),
+            TinValue::Bytes(x) => Ok(TinValue::Bytes(Rc::clone(x))),
+            TinValue::Cell(x) => Ok(TinValue::Cell(Rc::clone(x))),
+            TinValue::Pair(x) => Ok(TinValue::Pair(Rc::clone(x))),
+            TinValue::List(x) => Ok(TinValue::List(Rc::clone(x))),
+            TinValue::Nil => Ok(TinValue::Nil),
+            TinValue::Closure(x) => Ok(TinValue::Closure(Rc::clone(x))),
         }
     }
 }
 
-fn quote<I, E>(d: Rc<Datum>, i: &mut I, e: &mut E) -> TinResult<TinValue>
+fn quote<I>(d: Rc<Datum>, i: &mut I, e: &mut Environment) -> TinResult<TinValue>
 where
     I: Interner,
-    E: Environ,
 {
     match d.as_ref() {
         Datum::Symbol(s) => Ok(i.intern(s).into()),
@@ -428,10 +628,9 @@ where
     }
 }
 impl Evaluable for Symbol {
-    fn eval_using<I, E>(&self, i: &mut I, e: &mut E) -> TinResult<TinValue>
+    fn eval_using<I>(&self, i: &mut I, _e: &mut Environment) -> TinResult<TinValue>
     where
         I: Interner,
-        E: Environ,
     {
         Ok(TinValue::Symbol(i.intern(&self)))
     }

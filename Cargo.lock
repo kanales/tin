@@ -5,3 +5,10 @@ version = 3
 [[package]]
 name = "tin"
 version = "0.1.0"
+dependencies = [
+ "tin_core",
+]
+
+[[package]]
+name = "tin_core"
+version = "0.1.0"
