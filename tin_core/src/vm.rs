@@ -6,9 +6,9 @@ use crate::error::{TinError, TinResult};
 use crate::eval::{Evaluable, Interner};
 use crate::parser::{parse_form, parse_str};
 use crate::scanner::tokenize_file;
-use crate::value::{Closure, Def, Environment, Function, Ident, TinValue};
+use crate::value::{Closure, Def, Environment, Ident, List, TinValue};
 
-struct SymbolDict {
+pub struct SymbolDict {
     symbols: Vec<Symbol>,
     counter: usize,
 }
@@ -60,10 +60,20 @@ impl TinState {
         builtin::builtins(&mut s);
         s
     }
-    pub fn define_closure(&mut self, s: Symbol, f: Function) {
+    pub fn define_closure<F>(&mut self, s: Symbol, f: F)
+    where
+        F: Fn(List) -> TinResult<TinValue> + 'static,
+    {
         let kw = self.intern(&s);
         let cl = Closure::new(f);
         Def::new(kw, cl.into())
+            .eval_using(&mut self.interner, &mut self.environ)
+            .unwrap();
+    }
+
+    pub fn define(&mut self, s: Symbol, v: TinValue) {
+        let kw = self.intern(&s);
+        Def::new(kw, v)
             .eval_using(&mut self.interner, &mut self.environ)
             .unwrap();
     }
@@ -76,6 +86,11 @@ impl TinState {
     pub fn eval_datum(&mut self, d: Datum) -> TinResult<TinValue> {
         let expr = d.eval_using(&mut self.interner, &mut self.environ)?;
         expr.eval_using(&mut self.interner, &mut self.environ)
+    }
+
+    pub fn load_file(&mut self, f: String) -> TinResult<TinValue> {
+        let file = File::open(f).map_err(|_| TinError::IOError)?;
+        self.do_file(file)
     }
 
     pub fn do_file(&mut self, f: File) -> TinResult<TinValue> {

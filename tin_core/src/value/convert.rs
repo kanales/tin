@@ -99,6 +99,21 @@ impl From<Rc<TinValue>> for TinValue {
             TinValue::Nil => TinValue::Nil,
             TinValue::Closure(x) => TinValue::Closure(Rc::clone(x)),
             TinValue::Exception(x) => TinValue::Exception(Rc::clone(x)),
+            TinValue::Native(x) => TinValue::Native(Rc::clone(x)),
+            TinValue::Port(x) => TinValue::Port(Rc::clone(x)),
+            TinValue::Environment(x) => TinValue::Environment(Rc::clone(x)),
+        }
+    }
+}
+
+impl TryFrom<TinValue> for String {
+    type Error = TinError;
+
+    fn try_from(value: TinValue) -> Result<Self, Self::Error> {
+        if let TinValue::String(s) = value {
+            Ok(s.to_string())
+        } else {
+            Err(TinError::NotAString(Box::new(value)))
         }
     }
 }

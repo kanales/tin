@@ -1,9 +1,12 @@
-use std::borrow::Borrow;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::convert::TryInto;
+use std::fs::File;
 use std::iter::FromIterator;
 use std::rc::Rc;
 
+use crate::parser::parse_form;
+use crate::scanner::{tokenize, tokenize_file};
 use crate::{
     datum::{Datum, Symbol},
     error::{TinError, TinResult},
@@ -407,26 +410,31 @@ impl std::fmt::Debug for TinCell {
     }
 }
 
-pub type Function = fn(List) -> TinResult<TinValue>;
 pub struct Closure {
-    f: Box<Function>,
+    f: Box<dyn Fn(List) -> TinResult<TinValue>>,
     name: Option<String>,
 }
 
 impl PartialEq for Closure {
     fn eq(&self, other: &Self) -> bool {
-        (self.name == other.name) || (self.f == other.f)
+        self.name == other.name
     }
 }
 
 impl Closure {
-    pub fn new_with_id(id: String, f: Function) -> Self {
+    pub fn new_with_id<F>(id: String, f: F) -> Self
+    where
+        F: Fn(List) -> TinResult<TinValue> + 'static,
+    {
         Closure {
             f: Box::new(f),
             name: Some(id),
         }
     }
-    pub fn new(f: Function) -> Self {
+    pub fn new<F>(f: F) -> Self
+    where
+        F: Fn(List) -> TinResult<TinValue> + 'static,
+    {
         Closure {
             f: Box::new(f),
             name: None,
@@ -497,8 +505,96 @@ impl Evaluable for App {
             }
 
             TinValue::Lambda(l) => l.call(self.body.clone(), i, e),
+            TinValue::Native(f) => f.call(self.body.clone(), i, e),
             _ => Err(TinError::NotAProc(Box::new(Datum::Nil))),
         }
+    }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum Native {
+    DoFile,
+    OpenFile,
+}
+
+impl Native {
+    pub fn call<I: Interner>(
+        &self,
+        args: Vec<TinValue>,
+        i: &mut I,
+        e: &mut Environment,
+    ) -> TinResult<TinValue> {
+        match self {
+            Native::DoFile => {
+                if args.len() != 1 {
+                    return Err(TinError::ArityMismatch(1, args.len()));
+                }
+                let filename: String = args[0].clone().try_into()?;
+                let f = File::open(filename).map_err(|_| TinError::IOError)?;
+                let mut it = tokenize_file(f);
+                loop {
+                    let form = parse_form(it.by_ref());
+                    match form {
+                        Ok(x) => x.eval_using(i, e)?.eval_using(i, e)?,
+                        Err(TinError::EOF) => return Ok(TinValue::default()),
+                        Err(x) => return Err(x),
+                    };
+                }
+            }
+            Native::OpenFile => {
+                if args.len() != 1 {
+                    return Err(TinError::ArityMismatch(1, args.len()));
+                }
+                let filename: String = args[0].clone().try_into()?;
+                let f = File::open(filename).map_err(|_| TinError::IOError)?;
+                Ok(TinValue::Port(Rc::new(Port::new(f))))
+            }
+        }
+    }
+}
+
+// use crate::eval::Evaluable;
+
+// pub fn eval_datum<I: Interner>(
+//     interner: &mut I,
+//     env: &mut Environment,
+//     d: Datum,
+// ) -> TinResult<TinValue> {
+//     let expr = d.eval_using(interner, env)?;
+//     expr.eval_using(interner, env)
+// }
+
+// pub fn do_file<I: Interner>(
+//     interner: &mut I,
+//     env: &mut Environment,
+//     f: String,
+// ) -> TinResult<TinValue> {
+//     let f = File::open(f).map_err(|_| TinError::IOError)?;
+//     let mut it = tokenize_file(f);
+//     let mut last = TinValue::default();
+//     loop {
+//         let form = parse_form(it.by_ref());
+//         match form {
+//             Ok(x) => {
+//                 last = eval_datum(interner, env, x)?;
+//             }
+//             Err(TinError::EOF) => return Ok(last),
+//             Err(e) => return Err(e),
+//         }
+//     }
+// }
+#[derive(Debug)]
+pub struct Port(Box<File>);
+
+impl Port {
+    fn new(f: File) -> Self {
+        Port(Box::new(f))
+    }
+}
+
+impl PartialEq for Port {
+    fn eq(&self, other: &Self) -> bool {
+        false
     }
 }
 
@@ -532,6 +628,12 @@ pub enum TinValue {
     Nil,
     Closure(Rc<Closure>),
     Exception(Rc<String>),
+
+    Native(Rc<Native>),
+
+    Port(Rc<Port>),
+
+    Environment(Rc<Environment>),
 }
 
 impl Default for TinValue {
@@ -599,6 +701,9 @@ impl TinValue {
             TinValue::Nil => format!("()"),
             TinValue::Closure(c) => format!("#closure({:?})", c.name),
             TinValue::Exception(_) => todo!(),
+            TinValue::Native(_) => todo!("#native"),
+            TinValue::Port(_) => todo!("#port"),
+            TinValue::Environment(_) => format!("#environment"),
         }
     }
 }
@@ -675,6 +780,9 @@ impl Evaluable for TinValue {
             TinValue::List(x) => Ok(TinValue::List(Rc::clone(x))),
             TinValue::Nil => Ok(TinValue::Nil),
             TinValue::Closure(x) => Ok(TinValue::Closure(Rc::clone(x))),
+            TinValue::Native(x) => Ok(TinValue::Native(Rc::clone(x))),
+            TinValue::Port(x) => Ok(TinValue::Port(Rc::clone(x))),
+            TinValue::Environment(x) => Ok(TinValue::Environment(Rc::clone(x))),
         }
     }
 }
