@@ -1,7 +1,11 @@
+use std::fs::File;
+
+use crate::builtin;
 use crate::datum::{Datum, Symbol};
-use crate::error::TinResult;
+use crate::error::{TinError, TinResult};
 use crate::eval::{Evaluable, Interner};
-use crate::parser::parse_str;
+use crate::parser::{parse_form, parse_str};
+use crate::scanner::tokenize_file;
 use crate::value::{Closure, Def, Environment, Function, Ident, TinValue};
 
 struct SymbolDict {
@@ -47,22 +51,14 @@ pub struct TinState {
     environ: Environment,
 }
 
-#[macro_export]
-macro_rules! def_closure {
-    ($vm:ident, $l:literal, $e:expr) => {
-        $vm.define_closure(
-            $crate::datum::Symbol::try_new($l).expect("expected indentifier"),
-            $e,
-        )
-    };
-}
-
 impl TinState {
     pub fn new() -> Self {
-        TinState {
+        let mut s = TinState {
             interner: SymbolDict::new(),
             environ: Environment::new(),
-        }
+        };
+        builtin::builtins(&mut s);
+        s
     }
     pub fn define_closure(&mut self, s: Symbol, f: Function) {
         let kw = self.intern(&s);
@@ -80,6 +76,21 @@ impl TinState {
     pub fn eval_datum(&mut self, d: Datum) -> TinResult<TinValue> {
         let expr = d.eval_using(&mut self.interner, &mut self.environ)?;
         expr.eval_using(&mut self.interner, &mut self.environ)
+    }
+
+    pub fn do_file(&mut self, f: File) -> TinResult<TinValue> {
+        let mut it = tokenize_file(f);
+        let mut last = TinValue::default();
+        loop {
+            let form = parse_form(it.by_ref());
+            match form {
+                Ok(x) => {
+                    last = self.eval_datum(x)?;
+                }
+                Err(TinError::EOF) => return Ok(last),
+                Err(e) => return Err(e),
+            }
+        }
     }
 }
 

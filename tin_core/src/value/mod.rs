@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::iter::FromIterator;
@@ -41,8 +42,32 @@ pub enum List {
 }
 
 impl List {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self::Nil
+    }
+
+    pub fn is_empty(&self) -> bool {
+        if let List::Pair(_, _) = self {
+            false
+        } else {
+            true
+        }
+    }
+
+    pub fn one(self) -> TinResult<TinValue> {
+        if let List::Pair(car, cdr) = self {
+            if cdr.is_empty() {
+                return Ok(car.into());
+            }
+        }
+
+        Err(TinError::GenericError(
+            "expected exactly one arg".to_string(),
+        ))
+    }
+
+    pub fn iter(&self) -> ListIterator {
+        return Rc::new(self.clone()).into();
     }
 }
 
@@ -51,6 +76,12 @@ impl IntoIterator for List {
     type IntoIter = ListIterator;
     fn into_iter(self) -> Self::IntoIter {
         ListIterator(Rc::new(self))
+    }
+}
+
+impl From<Rc<List>> for ListIterator {
+    fn from(v: Rc<List>) -> Self {
+        ListIterator(v)
     }
 }
 
@@ -135,7 +166,10 @@ impl Environment {
             .env
             .get(sym)
             .map(TinValue::clone)
-            .or_else(|| self.0.borrow().parent.as_ref().and_then(|p| p.fetch(sym)))
+            .or_else(|| {
+                let parent = &self.0.as_ref().borrow().parent;
+                parent.as_ref().and_then(|p| p.fetch(sym))
+            })
     }
     pub fn put(&mut self, sym: Ident, val: TinValue) {
         self.0.borrow_mut().env.insert(sym, val);
@@ -507,11 +541,64 @@ impl Default for TinValue {
 }
 
 impl TinValue {
-    fn truthy(&self) -> bool {
+    pub fn truthy(&self) -> bool {
         if let TinValue::Bool(b) = self {
             *b
         } else {
             true
+        }
+    }
+
+    pub fn number<N: Into<f64>>(x: N) -> Self {
+        Self::Number(x.into())
+    }
+
+    pub fn to_string<I: Interner>(&self, i: &I) -> String {
+        match self {
+            TinValue::Symbol(s) => i.unintern(*s).to_string(),
+            TinValue::Number(n) => n.to_string(),
+            TinValue::Bool(n) => n.to_string(),
+            TinValue::Char(n) => n.to_string(),
+            TinValue::Vector(_) => todo!(),
+            TinValue::String(s) => format!("\"{}\"", s),
+            TinValue::Bytes(_) => todo!(),
+            TinValue::Quote(q) => format!("'{}", q),
+            TinValue::Cell(_) => todo!(),
+            TinValue::Pair(p) => format!("({} . {})", p.car.to_string(i), p.cdr.to_string(i)),
+            TinValue::List(s) => format!(
+                "({})",
+                s.iter()
+                    .map(|x| x.to_string(i))
+                    .collect::<Vec<String>>()
+                    .join(" ")
+            ),
+            TinValue::App(a) => format!(
+                "({} {})",
+                a.cmd.to_string(i),
+                a.body
+                    .clone()
+                    .into_iter()
+                    .map(|x| x.to_string(i))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            ),
+            TinValue::Lambda(_) => format!("#lambda"),
+            TinValue::If(x) => {
+                if let Some(v) = &x.altern {
+                    format!(
+                        "(if {} {} {})",
+                        x.test.to_string(i),
+                        x.conseq.to_string(i),
+                        v.to_string(i)
+                    )
+                } else {
+                    format!("(if {} {})", x.test.to_string(i), x.conseq.to_string(i))
+                }
+            }
+            TinValue::Def(d) => format!("(define {} {})", i.unintern(d.0), d.1.to_string(i)),
+            TinValue::Nil => format!("()"),
+            TinValue::Closure(c) => format!("#closure({:?})", c.name),
+            TinValue::Exception(_) => todo!(),
         }
     }
 }
@@ -528,13 +615,6 @@ macro_rules! self_evaluating {
         }
     };
 }
-
-// TinValue::Vector(x) => x.eval_using(i, e),
-// TinValue::String(x) => x.eval_using(i, e),
-// TinValue::Bytes(x) => x.eval_using(i, e),
-// TinValue::Cell(x) => x.eval_using(i, e),
-// TinValue::Pair(x) => x.eval_using(i, e),
-// TinValue::List(x) => x.eval_using(i, e),
 
 self_evaluating!(bool => Bool);
 self_evaluating!(f64 => Number);

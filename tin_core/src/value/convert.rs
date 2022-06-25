@@ -3,7 +3,7 @@ use std::{cell::Cell, rc::Rc};
 
 use crate::error::TinError;
 
-use super::{App, Closure, Def, Ident, If, Lambda, Pair, TinCell, TinValue};
+use super::{App, Closure, Def, Ident, If, Lambda, List, Pair, TinCell, TinValue};
 
 macro_rules! packs {
     ($t:ty => $e:path) => {
@@ -22,6 +22,7 @@ packs!(Vec<TinCell> => TinValue::Vector);
 packs!(Def => TinValue::Def);
 packs!(Closure => TinValue::Closure);
 packs!(App => TinValue::App);
+packs!(List => TinValue::List);
 packs!(Pair => TinValue::Pair);
 
 impl From<Ident> for TinValue {
@@ -73,6 +74,31 @@ impl TryFrom<TinValue> for Ident {
             Ok(id)
         } else {
             Err(TinError::NotAnIdentifier(Box::new(value)))
+        }
+    }
+}
+
+impl From<Rc<TinValue>> for TinValue {
+    fn from(val: Rc<TinValue>) -> Self {
+        match val.as_ref() {
+            TinValue::Symbol(x) => TinValue::Symbol(*x),
+            TinValue::Number(x) => TinValue::Number(*x),
+            TinValue::Bool(x) => TinValue::Bool(*x),
+            TinValue::Char(x) => TinValue::Char(*x),
+            TinValue::Vector(x) => TinValue::Vector(Rc::clone(x)),
+            TinValue::String(x) => TinValue::String(Rc::clone(x)),
+            TinValue::Bytes(x) => TinValue::Bytes(Rc::clone(x)),
+            TinValue::Quote(x) => TinValue::Quote(Rc::clone(x)),
+            TinValue::Cell(x) => TinValue::Cell(Rc::clone(x)),
+            TinValue::Pair(x) => TinValue::Pair(Rc::clone(x)),
+            TinValue::List(x) => TinValue::List(Rc::clone(x)),
+            TinValue::App(x) => TinValue::App(Rc::clone(x)),
+            TinValue::Lambda(x) => TinValue::Lambda(Rc::clone(x)),
+            TinValue::If(x) => TinValue::If(Rc::clone(x)),
+            TinValue::Def(x) => TinValue::Def(Rc::clone(x)),
+            TinValue::Nil => TinValue::Nil,
+            TinValue::Closure(x) => TinValue::Closure(Rc::clone(x)),
+            TinValue::Exception(x) => TinValue::Exception(Rc::clone(x)),
         }
     }
 }

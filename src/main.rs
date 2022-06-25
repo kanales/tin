@@ -1,4 +1,5 @@
 use std::convert::TryInto;
+use std::fs::File;
 use std::io::{stdin, BufRead};
 
 use tin_core::datum;
@@ -8,17 +9,9 @@ use tin_core::parser;
 use tin_core::scanner;
 use tin_core::vm::TinState;
 
-fn main() {
+fn repl() {
     let mut acc = String::new();
     let mut state = TinState::new();
-
-    def_closure!(state, "+", |vals| {
-        let num = vals.into_iter().fold(Ok(0f64), |a, v| {
-            let n: f64 = v.as_ref().try_into()?;
-            Ok(a? + n)
-        })?;
-        Ok(num.into())
-    });
 
     eprint!("> ");
     for line in stdin().lock().lines() {
@@ -34,6 +27,19 @@ fn main() {
             acc.clear();
         }
         eprint!("> ");
+    }
+}
+
+fn main() {
+    let mut args = std::env::args();
+    args.next();
+
+    if let Some(file) = args.next() {
+        let f = File::open(file).unwrap();
+        let mut state = TinState::new();
+        state.do_file(f).unwrap();
+    } else {
+        repl()
     }
 }
 

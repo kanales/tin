@@ -1,4 +1,9 @@
-use std::str::Chars;
+use std::io::{BufRead, BufReader, Read, Seek};
+use std::{
+    fs::File,
+    io::SeekFrom,
+    str::{from_utf8_unchecked, Chars},
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token {
@@ -29,8 +34,11 @@ impl Token {
     }
 }
 
-pub struct TokenStream<'a> {
-    src: Chars<'a>,
+pub struct TokenStream<I>
+where
+    I: Iterator<Item = char>,
+{
+    src: I,
     top: Option<char>,
 }
 
@@ -90,7 +98,10 @@ macro_rules! token_error {
     };
 }
 
-impl TokenStream<'_> {
+impl<I> TokenStream<I>
+where
+    I: Iterator<Item = char>,
+{
     fn collect_while<F>(&mut self, p: F) -> String
     where
         F: Fn(char) -> bool,
@@ -401,7 +412,10 @@ impl TokenStream<'_> {
     }
 }
 
-impl<'a> Iterator for TokenStream<'a> {
+impl<I> Iterator for TokenStream<I>
+where
+    I: Iterator<Item = char>,
+{
     type Item = Token;
     fn next(&mut self) -> Option<Self::Item> {
         let mut it = self.src.by_ref().skip_while(|c| c.is_whitespace());
@@ -425,9 +439,48 @@ pub fn is_dot_subsequent(c: &char) -> bool {
     is_sign_subsequent(c) || *c == '.'
 }
 
-pub fn tokenize(s: &str) -> TokenStream {
+pub fn tokenize(s: &str) -> TokenStream<Chars> {
     TokenStream {
         src: s.chars(),
+        top: None,
+    }
+}
+
+pub struct FileChars {
+    file: BufReader<File>,
+    chars: Vec<char>,
+}
+
+impl FileChars {
+    pub fn new(file: File) -> Self {
+        FileChars {
+            file: BufReader::new(file),
+            chars: Vec::new(),
+        }
+    }
+}
+
+impl Iterator for FileChars {
+    type Item = char;
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(nxt) = self.chars.pop() {
+            return Some(nxt);
+        }
+
+        let mut line = String::new();
+        if let Ok(new) = self.file.read_line(&mut line) {
+            if new > 0 {
+                self.chars = line.chars().rev().collect();
+                return self.chars.pop();
+            }
+        }
+        None
+    }
+}
+
+pub fn tokenize_file(f: File) -> TokenStream<FileChars> {
+    TokenStream {
+        src: FileChars::new(f),
         top: None,
     }
 }

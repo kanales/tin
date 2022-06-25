@@ -1,6 +1,7 @@
 #![feature(custom_inner_attributes)]
 
 // mod macros;
+pub mod builtin;
 pub mod datum;
 pub mod error;
 pub mod eval;

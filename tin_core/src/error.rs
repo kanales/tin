@@ -12,6 +12,8 @@ pub enum TinError {
     NotFormals(Box<Datum>),
     NotAnIdentifier(Box<TinValue>),
     UndefinedSymbol(String),
+
+    GenericError(String),
     EOF,
 }
 
